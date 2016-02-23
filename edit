@@ -1,0 +1,1 @@
+gedit src/kern/thread/synch.c src/kern/include/synch.h &
