@@ -335,15 +335,14 @@ struct rwlock* rwlock_create(const char *name) {
 	}
 
 	    spinlock_init(&rwlock->rwlock_lock);
-        read_count =0;
-        writer_in = false;
-        writer_waiting = 0;
+        rwlock->reader_count =0;
+        rwlock->writer_in = false;
+        rwlock->writer_waiting = 0;
 
         return rwlock;
 }
 
-void
-lock_destroy(struct lock *lock)
+void rwlock_destroy(struct rwlock *rwlock)
 {
         KASSERT(rwlock != NULL);
 
@@ -356,16 +355,16 @@ lock_destroy(struct lock *lock)
 }
 void rwlock_acquire(struct rwlock* rwlock, int mode) {
     if(mode == READ) {
-        spinlock_acquire(rwlock->rwlock_lock);
+        spinlock_acquire(&rwlock->rwlock_lock);
         while(rwlock->writer_in || (rwlock->writer_waiting != 0 && rwlock->reader_count != 0)) {
             wchan_sleep(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
         }
         rwlock->reader_count++;
         spinlock_release(&rwlock->rwlock_lock);
     } else if(mode == WRITE) {
-        spinlock_acquire(rwlock->rwlock_lock);
+        spinlock_acquire(&rwlock->rwlock_lock);
         rwlock->writer_waiting++;
-        while(rwlock->read_count != 0 || rwlock->writer_in) {
+        while(rwlock->reader_count != 0 || rwlock->writer_in) {
             wchan_sleep(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
         }
         rwlock->writer_in = true;
@@ -392,7 +391,7 @@ void rwlock_release(struct rwlock* rwlock, int mode) {
 	spinlock_release(&rwlock->rwlock_lock);
 }
 
-bool rwlock_do_i_hold(struct lock* rwlock) {
+bool rwlock_do_i_hold(struct rwlock* rwlock) {
     (void)rwlock;
     return true;
 }

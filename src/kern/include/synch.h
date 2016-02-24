@@ -147,14 +147,14 @@ struct rwlock {
     char *rwlk_name;
 	struct wchan *rwlock_wchan;
 	struct spinlock rwlock_lock;
-    volatile unsigned read_count;
+    volatile unsigned reader_count;
     volatile bool writer_in;
     volatile int writer_waiting;
-}
+};
 
 struct rwlock* rwlock_create(const char *name);
-void rwlock_destroy(struct lock *);
-void rwlock_acquire(struct lock *);
-void rwlock_release(struct lock *);
-bool rwlock_do_i_hold(struct lock *);
+void rwlock_destroy(struct rwlock *);
+void rwlock_acquire(struct rwlock *, int mode);
+void rwlock_release(struct rwlock *, int mode);
+bool rwlock_do_i_hold(struct rwlock *);
 #endif /* _SYNCH_H_ */
