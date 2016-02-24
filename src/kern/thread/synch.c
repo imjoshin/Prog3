@@ -154,9 +154,9 @@ lock_create(const char *name)
                 return NULL;
         }
 
-	lock->lock_wchan = wchan_create(lock->lock_name);
+	lock->lock_wchan = wchan_create(lock->lk_name);
 	if (lock->lock_wchan == NULL) {
-		kfree(lock->lock_name);
+		kfree(lock->lk_name);
 		kfree(lock);
 		return NULL;
 	}
@@ -173,8 +173,8 @@ lock_destroy(struct lock *lock)
         KASSERT(lock != NULL);
 
         // add stuff here as needed
-    	spinlock_cleanup(&sem->sem_lock);
-	    wchan_destroy(sem->sem_wchan);
+    	spinlock_cleanup(&lock->lock_lock);
+	    wchan_destroy(lock->lock_wchan);
 
         kfree(lock->lk_name);
         kfree(lock);
@@ -188,7 +188,7 @@ lock_acquire(struct lock *lock)
 
 	/* Use the lock spinlock to protect the wchan as well. */
 	spinlock_acquire(&lock->lock_lock);
-        while (sem->sem_count == 0) {
+        while (lock->lock_count == 0) {
 		    wchan_sleep(lock->lock_wchan, &lock->lock_lock);
         }
         KASSERT(lock->lock_count > 0);
@@ -199,7 +199,7 @@ lock_acquire(struct lock *lock)
 void
 lock_release(struct lock *lock)
 {
-        KASSERT(sem != NULL);
+        KASSERT(lock != NULL);
 
 	spinlock_acquire(&lock->lock_lock);
 
@@ -297,7 +297,7 @@ cv_signal(struct cv *cv, struct lock *lock)
 void
 cv_broadcast(struct cv *cv, struct lock *lock)
 {
-    int i;
+    unsigned int i;
     if(lock_do_i_hold(lock)) {
        lock_release(lock);
 

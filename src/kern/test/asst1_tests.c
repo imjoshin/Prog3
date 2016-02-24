@@ -7,20 +7,26 @@
 #include <clock.h>
 #include <test.h>
 
-void ok(void) {
+#define NAMESTRING "some-silly-name"
+
+static void ok(void) {
 	kprintf("Test passed; now cleaning up.\n");
 }
 
 /* makelock */
-struct lock* makelock() {
+/*
+static struct lock* makelock() {
     struct lock* lock;
     lock = lock_create(NAMESTRING);
 	if (lock == NULL) {
 		panic("locktest: whoops: lock_create failed\n");
 	}
 	return lock;
-}
+}*/
 
+static bool spinlock_not_held(struct spinlock *splk) {
+	return splk->splk_holder == NULL;
+}
 
 /*
  * 1. After a successful lock_create:
@@ -34,14 +40,12 @@ static int utest1(){
 	struct lock* lock;
 	const char *name = NAMESTRING;
 
-	(void)nargs; (void)args;
-
 	lock = lock_create(name);
 	if (lock == NULL) {
 		panic("locktest: whoops: lock_create failed\n");
 	}
-	KASSERT(!strcmp(lock->lock_name, name));
-	KASSERT(lock->lock_name != name);
+	KASSERT(!strcmp(lock->lk_name, name));
+	KASSERT(lock->lk_name != name);
 	KASSERT(lock->lock_wchan != NULL);
 	KASSERT(spinlock_not_held(&lock->lock_lock));
 	KASSERT(lock->lock_count == 1);
