@@ -1,2 +1,0 @@
-set path = ( $path /home/campus17/rahirn/os161/tools/bin )
-setenv MAKESYSPATH "$HOME/os161/tools/share/mk/"
