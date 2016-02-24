@@ -39,6 +39,7 @@
 #include <thread.h>
 #include <current.h>
 #include <synch.h>
+#include <unistd.h>
 
 ////////////////////////////////////////////////////////////
 //
@@ -193,6 +194,7 @@ lock_acquire(struct lock *lock)
         }
         KASSERT(lock->lock_count > 0);
         lock->lock_count--;
+        lock->owner = getpid();
 	spinlock_release(&lock->lock_lock);
 }
 
@@ -212,13 +214,8 @@ lock_release(struct lock *lock)
 }
 
 bool
-lock_do_i_hold(struct lock *lock)
-{
-        // Write this
-
-        (void)lock;  // suppress warning until code gets written
-
-        return true; // dummy until code gets written
+lock_do_i_hold(struct lock *lock) {
+        return (lock->owner == getpid());
 }
 
 ////////////////////////////////////////////////////////////
@@ -338,7 +335,8 @@ struct rwlock* rwlock_create(const char *name) {
         rwlock->reader_count =0;
         rwlock->writer_in = false;
         rwlock->writer_waiting = 0;
-
+        rwlock->writer_pid = -1;
+        memset(rwlock->reader_pids, 0xff, sizeof(int) * 1000);
         return rwlock;
 }
 
@@ -354,12 +352,15 @@ void rwlock_destroy(struct rwlock *rwlock)
         kfree(rwlock);
 }
 void rwlock_acquire(struct rwlock* rwlock, int mode) {
+    int i;
     if(mode == READ) {
         spinlock_acquire(&rwlock->rwlock_lock);
         while(rwlock->writer_in || (rwlock->writer_waiting != 0 && rwlock->reader_count != 0)) {
             wchan_sleep(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
         }
         rwlock->reader_count++;
+        for(i = 0; rwlock->reader_pids[i] != -1; i++) {}
+        rwlock->reader_pids[i] = getpid();
         spinlock_release(&rwlock->rwlock_lock);
     } else if(mode == WRITE) {
         spinlock_acquire(&rwlock->rwlock_lock);
@@ -369,19 +370,32 @@ void rwlock_acquire(struct rwlock* rwlock, int mode) {
         }
         rwlock->writer_in = true;
         rwlock->writer_waiting--;
+        rwlock->writer_pid = getpid();
         spinlock_release(&rwlock->rwlock_lock);
     } else {
         kprintf("Improper mode!!!!!\n");
     }
 }
 void rwlock_release(struct rwlock* rwlock, int mode) {
+    bool match = false;
+    int i;
     KASSERT(rwlock != NULL);
     KASSERT(rwlock_do_i_hold(rwlock));
 
 	spinlock_acquire(&rwlock->rwlock_lock);
     if(mode == READ) {
+        for (i = 0; i < 1000; i++) {
+            if(rwlock->reader_pids[i] == getpid()) {
+                match = true;
+                break;
+            }
+        }
+        KASSERT(match);
+        rwlock->reader_pids[i] = -1;
         rwlock->reader_count--;
     } else if(mode == WRITE) {
+        KASSERT(rwlock->writer_pid == getpid());
+        rwlock->writer_pid = -1;
         rwlock->writer_in = false;
     } else {
         kprintf("Improper mode!!!!!\n");

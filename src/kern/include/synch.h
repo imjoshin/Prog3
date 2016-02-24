@@ -79,8 +79,7 @@ struct lock {
 	struct wchan *lock_wchan;
 	struct spinlock lock_lock;
         volatile unsigned lock_count;
-        // add what you need here
-        // (don't forget to mark things volatile as needed)
+    int owner;
 };
 
 struct lock *lock_create(const char *name);
@@ -150,6 +149,8 @@ struct rwlock {
     volatile unsigned reader_count;
     volatile bool writer_in;
     volatile int writer_waiting;
+    int writer_pid;
+    int reader_pids[1000];
 };
 
 struct rwlock* rwlock_create(const char *name);
