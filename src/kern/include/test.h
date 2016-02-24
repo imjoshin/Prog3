@@ -107,5 +107,7 @@ void menu(char *argstr);
 /* The main function, called from start.S. */
 void kmain(char *bootstring);
 
+/* Lock Tests */
+int locktest1(int, char**);
 
 #endif /* _TEST_H_ */
