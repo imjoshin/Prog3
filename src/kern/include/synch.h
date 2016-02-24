@@ -29,6 +29,8 @@
 
 #ifndef _SYNCH_H_
 #define _SYNCH_H_
+#define READ 0
+#define WRITE 1
 
 /*
  * Header file for synchronization primitives.
@@ -141,5 +143,18 @@ void cv_wait(struct cv *cv, struct lock *lock);
 void cv_signal(struct cv *cv, struct lock *lock);
 void cv_broadcast(struct cv *cv, struct lock *lock);
 
+struct rwlock {
+    char *rwlk_name;
+	struct wchan *rwlock_wchan;
+	struct spinlock rwlock_lock;
+    volatile unsigned read_count;
+    volatile bool writer_in;
+    volatile int writer_waiting;
+}
 
+struct rwlock* rwlock_create(const char *name);
+void rwlock_destroy(struct lock *);
+void rwlock_acquire(struct lock *);
+void rwlock_release(struct lock *);
+bool rwlock_do_i_hold(struct lock *);
 #endif /* _SYNCH_H_ */

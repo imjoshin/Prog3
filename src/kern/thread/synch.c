@@ -313,8 +313,89 @@ cv_broadcast(struct cv *cv, struct lock *lock)
 }
 
 
+struct rwlock* rwlock_create(const char *name) {
+        struct rwlock* rwlock;
 
+        rwlock = kmalloc(sizeof(*rwlock));
+        if (rwlock == NULL) {
+                return NULL;
+        }
 
+        rwlock->rwlk_name = kstrdup(name);
+        if (rwlock->rwlk_name == NULL) {
+                kfree(rwlock);
+                return NULL;
+        }
+
+	rwlock->rwlock_wchan = wchan_create(rwlock->rwlk_name);
+	if (rwlock->rwlock_wchan == NULL) {
+		kfree(rwlock->rwlk_name);
+		kfree(rwlock);
+		return NULL;
+	}
+
+	    spinlock_init(&rwlock->rwlock_lock);
+        read_count =0;
+        writer_in = false;
+        writer_waiting = 0;
+
+        return rwlock;
+}
+
+void
+lock_destroy(struct lock *lock)
+{
+        KASSERT(rwlock != NULL);
+
+        // add stuff here as needed
+    	spinlock_cleanup(&rwlock->rwlock_lock);
+	    wchan_destroy(rwlock->rwlock_wchan);
+
+        kfree(rwlock->rwlk_name);
+        kfree(rwlock);
+}
+void rwlock_acquire(struct rwlock* rwlock, int mode) {
+    if(mode == READ) {
+        spinlock_acquire(rwlock->rwlock_lock);
+        while(rwlock->writer_in || (rwlock->writer_waiting != 0 && rwlock->reader_count != 0)) {
+            wchan_sleep(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
+        }
+        rwlock->reader_count++;
+        spinlock_release(&rwlock->rwlock_lock);
+    } else if(mode == WRITE) {
+        spinlock_acquire(rwlock->rwlock_lock);
+        rwlock->writer_waiting++;
+        while(rwlock->read_count != 0 || rwlock->writer_in) {
+            wchan_sleep(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
+        }
+        rwlock->writer_in = true;
+        rwlock->writer_waiting--;
+        spinlock_release(&rwlock->rwlock_lock);
+    } else {
+        kprintf("Improper mode!!!!!\n");
+    }
+}
+void rwlock_release(struct rwlock* rwlock, int mode) {
+    KASSERT(rwlock != NULL);
+    KASSERT(rwlock_do_i_hold(rwlock));
+
+	spinlock_acquire(&rwlock->rwlock_lock);
+    if(mode == READ) {
+        rwlock->reader_count--;
+    } else if(mode == WRITE) {
+        rwlock->writer_in = false;
+    } else {
+        kprintf("Improper mode!!!!!\n");
+    }
+
+	wchan_wakeone(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
+	spinlock_release(&rwlock->rwlock_lock);
+}
+
+bool rwlock_do_i_hold(struct lock* rwlock) {
+    (void)rwlock;
+    return true;
+}
 
 
 
