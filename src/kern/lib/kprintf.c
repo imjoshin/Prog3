@@ -211,6 +211,9 @@ panic(const char *fmt, ...)
 void
 badassert(const char *expr, const char *file, int line, const char *func)
 {
-	panic("Assertion failed: %s, at %s:%d (%s)\n",
-	      expr, file, line, func);
+	#ifndef DEBUG
+		panic("Assertion failed: %s, at %s:%d (%s)\n", expr, file, line, func);
+	#else
+		kprintf("Debug Assertion failed: %s, at %s:%d (%s)\n", expr, file, line, func);
+	#endif
 }

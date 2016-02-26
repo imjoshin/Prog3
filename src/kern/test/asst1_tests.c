@@ -122,11 +122,34 @@ locku1(int nargs, char **args)
 }
 
 /*
+ * 4. lock_count is an unsigned type.
+ */
+int
+locku2(int nargs, char **args)
+{
+	struct lock *lock;
+
+	(void)nargs; (void)args;
+
+	/* Create a lock with count 0. */
+	lock = makelock();
+	/* Decrement the count. */
+	lock->lock_count--;
+	/* This value should be positive. */
+	KASSERT(lock->lock_count > 0);
+
+	/* Clean up. */
+	ok();
+	lock_destroy(lock);
+	return 0;
+}
+
+/*
  * 5. A lock can be successfully initialized with a count of at
  * least 0xf0000000.
  */
 int
-locku5(int nargs, char **args)
+locku3(int nargs, char **args)
 {
 	struct lock *lock;
 
@@ -146,30 +169,11 @@ locku5(int nargs, char **args)
 }
 
 /*
- * 6. Passing a lock with a waiting thread to lock_destroy asserts
- * (in the wchan code).
- */
-int
-locku6(int nargs, char **args)
-{
-	struct lock *lock;
-
-	(void)nargs; (void)args;
-
-	lock = makelock();
-	makewaiter(lock);
-	kprintf("This should assert that the wchan's threadlist is empty\n");
-	lock_destroy(lock);
-	panic("locku6: wchan_destroy with waiters succeeded\n");
-	return 0;
-}
-
-/*
  * 7. Calling V on a lock does not block the caller, regardless
  * of the lock count.
  */
 int
-locku7(int nargs, char **args)
+locku4(int nargs, char **args)
 {
 	struct lock *lock;
 	struct spinlock lk;
@@ -209,7 +213,7 @@ locku7(int nargs, char **args)
  */
 static
 void
-do_locku89(bool interrupthandler)
+do_locku56(bool interrupthandler)
 {
 	struct lock *lock;
 	struct wchan *wchan;
@@ -256,20 +260,20 @@ do_locku89(bool interrupthandler)
 }
 
 int
-locku8(int nargs, char **args)
+locku5(int nargs, char **args)
 {
 	(void)nargs; (void)args;
 
-	do_locku89(false /*interrupthandler*/);
+	do_locku56(false /*interrupthandler*/);
 	return 0;
 }
 
 int
-locku9(int nargs, char **args)
+locku6(int nargs, char **args)
 {
 	(void)nargs; (void)args;
 
-	do_locku89(true /*interrupthandler*/);
+	do_locku56(true /*interrupthandler*/);
 	return 0;
 }
 
@@ -286,7 +290,7 @@ locku9(int nargs, char **args)
  */
 static
 int
-do_locku1011(bool interrupthandler)
+do_locku78(bool interrupthandler)
 {
 	struct lock *lock;
 	struct wchan *wchan;
@@ -338,20 +342,20 @@ do_locku1011(bool interrupthandler)
 }
 
 int
-locku10(int nargs, char **args)
+locku7(int nargs, char **args)
 {
 	(void)nargs; (void)args;
 
-	do_locku1011(false /*interrupthandler*/);
+	do_locku78(false /*interrupthandler*/);
 	return 0;
 }
 
 int
-locku11(int nargs, char **args)
+locku8(int nargs, char **args)
 {
 	(void)nargs; (void)args;
 
-	do_locku1011(true /*interrupthandler*/);
+	do_locku78(true /*interrupthandler*/);
 	return 0;
 }
 
@@ -368,7 +372,7 @@ locku11(int nargs, char **args)
  */
 static
 void
-locku1213(bool interrupthandler)
+locku910(bool interrupthandler)
 {
 	struct lock *lock;
 	struct wchan *wchan;
@@ -425,59 +429,20 @@ locku1213(bool interrupthandler)
 }
 
 int
-locku12(int nargs, char **args)
+locku9(int nargs, char **args)
 {
 	(void)nargs; (void)args;
 
-	locku1213(false /*interrupthandler*/);
+	locku910(false /*interrupthandler*/);
 	return 0;
 }
 
 int
-locku13(int nargs, char **args)
+locku10(int nargs, char **args)
 {
 	(void)nargs; (void)args;
 
-	locku1213(true /*interrupthandler*/);
-	return 0;
-}
-
-/*
- * 14. Calling V on a lock whose count is the maximum allowed value
- * asserts.
- */
-int
-locku14(int nargs, char **args)
-{
-	struct lock *lock;
-
-	(void)nargs; (void)args;
-
-	kprintf("This should assert that lock_count is > 0.\n");
-	lock = makelock();
-
-	/*
-	 * The maximum value is (unsigned)-1. Get this by decrementing
-	 * from 0.
-	 */
-	lock->lock_count--;
-	lock_release(lock);
-	KASSERT(lock->lock_count == 0);
-	panic("locku14: V tolerated count wraparound\n");
-	return 0;
-}
-
-/*
- * 15. Calling V on a null lock asserts.
- */
-int
-locku15(int nargs, char **args)
-{
-	(void)nargs; (void)args;
-
-	kprintf("This should assert that the lock isn't null.\n");
-	lock_release(NULL);
-	panic("locku15: V tolerated null lock\n");
+	locku910(true /*interrupthandler*/);
 	return 0;
 }
 
@@ -485,7 +450,7 @@ locku15(int nargs, char **args)
  * 16. Calling P on a lock with count > 0 does not block the caller.
  */
 int
-locku16(int nargs, char **args)
+locku11(int nargs, char **args)
 {
 	struct lock *lock;
 	struct spinlock lk;
@@ -511,17 +476,17 @@ locku16(int nargs, char **args)
  * 17. Calling P on a lock with count == 0 does block the caller.
  */
 
-static struct thread *locku17_thread;
+static struct thread *locku12_thread;
 
 static
 void
-locku17_sub(void *lockv, unsigned long junk)
+locku12_sub(void *lockv, unsigned long junk)
 {
 	struct lock *lock = lockv;
 
 	(void)junk;
 
-	locku17_thread = curthread;
+	locku12_thread = curthread;
 
 	/* precondition */
 	KASSERT(lock->lock_count == 0);
@@ -530,33 +495,33 @@ locku17_sub(void *lockv, unsigned long junk)
 }
 
 int
-locku17(int nargs, char **args)
+locku12(int nargs, char **args)
 {
 	struct lock *lock;
 	int result;
 
 	(void)nargs; (void)args;
 
-	locku17_thread = NULL;
+	locku12_thread = NULL;
 
 	lock = makelock();
-	result = thread_fork("locku17_sub", NULL, locku17_sub, lock, 0);
+	result = thread_fork("locku12_sub", NULL, locku12_sub, lock, 0);
 	if (result) {
-		panic("locku17: whoops: thread_fork failed\n");
+		panic("locku12: whoops: thread_fork failed\n");
 	}
 	kprintf("Waiting for subthread...\n");
 	clocksleep(1);
 
 	/* The subthread should be blocked. */
-	KASSERT(locku17_thread != NULL);
-	KASSERT(locku17_thread->t_state == S_SLEEP);
+	KASSERT(locku12_thread != NULL);
+	KASSERT(locku12_thread->t_state == S_SLEEP);
 
 	/* Clean up. */
 	ok();
 	lock_release(lock);
 	clocksleep(1);
 	lock_destroy(lock);
-	locku17_thread = NULL;
+	locku12_thread = NULL;
 	return 0;
 }
 
@@ -568,7 +533,7 @@ locku17(int nargs, char **args)
  *    - lock_count is one less
  */
 int
-locku18(int nargs, char **args)
+locku13(int nargs, char **args)
 {
 	struct lock *lock;
 	struct wchan *wchan;
@@ -608,13 +573,13 @@ locku18(int nargs, char **args)
 
 static
 void
-locku19_sub(void *lockv,  unsigned long junk)
+locku14_sub(void *lockv,  unsigned long junk)
 {
 	struct lock *lock = lockv;
 
 	(void)junk;
 
-	kprintf("locku19: waiting for parent to sleep\n");
+	kprintf("locku14: waiting for parent to sleep\n");
 	clocksleep(1);
 	/*
 	 * We could assert here that the parent *is* sleeping; but for
@@ -625,7 +590,7 @@ locku19_sub(void *lockv,  unsigned long junk)
 }
 
 int
-locku19(int nargs, char **args)
+locku14(int nargs, char **args)
 {
 	struct lock *lock;
 	struct wchan *wchan;
@@ -635,9 +600,9 @@ locku19(int nargs, char **args)
 	(void)nargs; (void)args;
 
 	lock = makelock();
-	result = thread_fork("locku19_sub", NULL, locku19_sub, lock, 0);
+	result = thread_fork("locku14_sub", NULL, locku14_sub, lock, 0);
 	if (result) {
-		panic("locku19: whoops: thread_fork failed\n");
+		panic("locku14: whoops: thread_fork failed\n");
 	}
 
 	/* preconditions */
@@ -656,58 +621,6 @@ locku19(int nargs, char **args)
 	KASSERT(spinlock_not_held(&lock->lock_lock));
 	KASSERT(lock->lock_count == 0);
 
-	return 0;
-}
-
-/*
- * 20/21. Calling P in an interrupt handler asserts, regardless of the
- * count.
- */
-int
-locku20(int nargs, char **args)
-{
-	struct lock *lock;
-
-	(void)nargs; (void)args;
-
-	kprintf("This should assert that we aren't in an interrupt\n");
-
-	lock = makelock();
-	/* as above */
-	curthread->t_in_interrupt = true;
-	lock_acquire(lock);
-	panic("locku20: P tolerated being in an interrupt handler\n");
-	return 0;
-}
-
-int
-locku21(int nargs, char **args)
-{
-	struct lock *lock;
-
-	(void)nargs; (void)args;
-
-	kprintf("This should assert that we aren't in an interrupt\n");
-
-	lock = makelock();
-	/* as above */
-	curthread->t_in_interrupt = true;
-	lock_acquire(lock);
-	panic("locku21: P tolerated being in an interrupt handler\n");
-	return 0;
-}
-
-/*
- * 22. Calling P on a null lock asserts.
- */
-int
-locku22(int nargs, char **args)
-{
-	(void)nargs; (void)args;
-
-	kprintf("This should assert that the lock isn't null.\n");
-	lock_acquire(NULL);
-	panic("locku22: P tolerated null lock\n");
 	return 0;
 }
 
@@ -757,27 +670,30 @@ locku22(int nargs, char **args)
 
 
 int asst1_tests(int nargs , char ** args){
-  int err;
+  int err = 0;
 	int ret;
   int i;
-	int (*tests[22])();
+	int (*tests[14])();
 
 	tests[0] = locku1;
-	tests[1] = locku5;
-	tests[2] = locku5;
-	tests[3] = locku6;
-	tests[4] = locku7;
-	tests[5] = locku8;
-	tests[6] = locku9;
-	tests[7] = locku10;
-	tests[8] = locku11;
-	tests[9] = locku12;
+	tests[1] = locku2;
+	tests[2] = locku3;
+	tests[3] = locku4;
+	tests[4] = locku5;
+	tests[5] = locku6;
+	tests[6] = locku7;
+	tests[7] = locku8;
+	tests[8] = locku9;
+	tests[9] = locku10;
+	tests[10] = locku11;
+	tests[11] = locku12;
+	tests[12] = locku13;
+	tests[13] = locku14;
 
   kprintf("Args %d\n",nargs);
   for (i=0;i<nargs;i++)kprintf("Arg[%d] <%s>\n",i,args[i]);
 	
-	for(i = 0; i < 10; i++){
-		if(i == 1 || i == 3) continue;
+	for(i = 0; i < 14; i++){
 		kprintf("Starting test %d\n", i + 1);
 		ret = tests[i]();
 		err += ret;

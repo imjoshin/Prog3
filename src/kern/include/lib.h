@@ -180,7 +180,7 @@ void beep(void);
  */
 int kprintf(const char *format, ...) __PF(1,2);
 __DEAD void panic(const char *format, ...) __PF(1,2);
-__DEAD void badassert(const char *expr, const char *file,
+void badassert(const char *expr, const char *file,
 		      int line, const char *func);
 
 void kgets(char *buf, size_t maxbuflen);

@@ -40,6 +40,10 @@
  * Test code.
  */
 
+#ifndef DEBUG
+#define DEBUG
+#endif
+
 /* data structure tests */
 int arraytest(int, char **);
 int arraytest2(int, char **);
