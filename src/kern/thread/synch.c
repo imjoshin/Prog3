@@ -39,7 +39,7 @@
 #include <thread.h>
 #include <current.h>
 #include <synch.h>
-#include <unistd.h>
+#include <cpu.h>
 
 ////////////////////////////////////////////////////////////
 //
@@ -340,8 +340,8 @@ struct rwlock* rwlock_create(const char *name) {
         rwlock->reader_count =0;
         rwlock->writer_in = false;
         rwlock->writer_waiting = 0;
-        rwlock->writer_pid = -1;
-        memset(rwlock->reader_pids, 0xff, sizeof(int) * 1000);
+        rwlock->writer_holder = NULL;
+        memset(rwlock->reader_holders, 0x0, sizeof(struct cpu) * 1000);
         return rwlock;
 }
 
@@ -364,8 +364,8 @@ void rwlock_acquire(struct rwlock* rwlock, int mode) {
             wchan_sleep(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
         }
         rwlock->reader_count++;
-        for(i = 0; rwlock->reader_pids[i] != -1; i++) {}
-        rwlock->reader_pids[i] = getpid();
+        for(i = 0; rwlock->reader_holders[i] != NULL; i++) {}
+        rwlock->reader_holders[i] = curcpu->c_self;
         spinlock_release(&rwlock->rwlock_lock);
     } else if(mode == WRITE) {
         spinlock_acquire(&rwlock->rwlock_lock);
@@ -375,7 +375,7 @@ void rwlock_acquire(struct rwlock* rwlock, int mode) {
         }
         rwlock->writer_in = true;
         rwlock->writer_waiting--;
-        rwlock->writer_pid = getpid();
+        rwlock->writer_holder = curcpu->c_self;
         spinlock_release(&rwlock->rwlock_lock);
     } else {
         kprintf("Improper mode!!!!!\n");
@@ -385,22 +385,21 @@ void rwlock_release(struct rwlock* rwlock, int mode) {
     bool match = false;
     int i;
     KASSERT(rwlock != NULL);
-    KASSERT(rwlock_do_i_hold(rwlock));
 
 	spinlock_acquire(&rwlock->rwlock_lock);
     if(mode == READ) {
         for (i = 0; i < 1000; i++) {
-            if(rwlock->reader_pids[i] == getpid()) {
+            if(rwlock->reader_holders[i] == curcpu->c_self) {
                 match = true;
                 break;
             }
         }
         KASSERT(match);
-        rwlock->reader_pids[i] = -1;
+        rwlock->reader_holders[i] = NULL;
         rwlock->reader_count--;
     } else if(mode == WRITE) {
-        KASSERT(rwlock->writer_pid == getpid());
-        rwlock->writer_pid = -1;
+        KASSERT(rwlock->writer_holder == curcpu->c_self);
+        rwlock->writer_holder = NULL;
         rwlock->writer_in = false;
     } else {
         kprintf("Improper mode!!!!!\n");
@@ -409,12 +408,6 @@ void rwlock_release(struct rwlock* rwlock, int mode) {
 	wchan_wakeone(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
 	spinlock_release(&rwlock->rwlock_lock);
 }
-
-bool rwlock_do_i_hold(struct rwlock* rwlock) {
-    (void)rwlock;
-    return true;
-}
-
 
 
 
