@@ -81,6 +81,30 @@ int semu19(int, char **);
 int semu20(int, char **);
 int semu21(int, char **);
 int semu22(int, char **);
+ 
+/* lock unit tests */
+int locku1(int, char **);
+int locku2(int, char **);
+int locku3(int, char **);
+int locku4(int, char **);
+int locku5(int, char **);
+int locku6(int, char **);
+int locku7(int, char **);
+int locku8(int, char **);
+int locku9(int, char **);
+int locku10(int, char **);
+int locku11(int, char **);
+int locku12(int, char **);
+int locku13(int, char **);
+int locku14(int, char **);
+int locku15(int, char **);
+int locku16(int, char **);
+int locku17(int, char **);
+int locku18(int, char **);
+int locku19(int, char **);
+int locku20(int, char **);
+int locku21(int, char **);
+int locku22(int, char **);
 
 /* filesystem tests */
 int fstest(int, char **);
