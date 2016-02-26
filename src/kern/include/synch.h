@@ -153,6 +153,8 @@ struct rwlock {
 	struct cpu* writer_holder;
     volatile bool writer_in;
     volatile int writer_waiting;
+    int writer_pid;
+    int reader_pids[1000];
 };
 
 struct rwlock* rwlock_create(const char *name);
