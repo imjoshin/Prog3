@@ -193,6 +193,7 @@ lock_acquire(struct lock *lock)
         }
         KASSERT(lock->lock_count > 0);
         lock->lock_count--;
+		lock->lock_holder = curcpu->c_self;
 	spinlock_release(&lock->lock_lock);
 }
 
@@ -214,11 +215,11 @@ lock_release(struct lock *lock)
 bool
 lock_do_i_hold(struct lock *lock)
 {
-        // Write this
+        if(!CURCPU_EXISTS()){
+			return true;
+		}
 
-        (void)lock;  // suppress warning until code gets written
-
-        return true; // dummy until code gets written
+		return (lock->lock_holder == curcpu->c_self);
 }
 
 ////////////////////////////////////////////////////////////

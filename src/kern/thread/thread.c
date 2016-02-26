@@ -108,6 +108,7 @@ thread_checkstack(struct thread *thread)
 	}
 }
 
+int pid_count = 0;
 /*
  * Create a thread. This is used both to create a first thread
  * for each CPU and to create subsequent forked threads.
@@ -117,7 +118,8 @@ struct thread *
 thread_create(const char *name)
 {
 	struct thread *thread;
-
+	
+	KASSERT(pid_count < 0xffffffff);
 	DEBUGASSERT(name != NULL);
 
 	thread = kmalloc(sizeof(*thread));
@@ -130,6 +132,10 @@ thread_create(const char *name)
 		kfree(thread);
 		return NULL;
 	}
+
+	thread->t_pid = pid_count;
+	pid_count++;
+
 	thread->t_wchan_name = "NEW";
 	thread->t_state = S_READY;
 

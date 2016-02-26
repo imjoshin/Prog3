@@ -49,7 +49,7 @@ struct semaphore {
         char *sem_name;
 	struct wchan *sem_wchan;
 	struct spinlock sem_lock;
-        volatile unsigned sem_count;
+    volatile unsigned sem_count;
 };
 
 struct semaphore *sem_create(const char *name, unsigned initial_count);
@@ -81,6 +81,7 @@ struct lock {
         volatile unsigned lock_count;
         // add what you need here
         // (don't forget to mark things volatile as needed)
+	struct cpu* lock_holder;
 };
 
 struct lock *lock_create(const char *name);
@@ -148,6 +149,8 @@ struct rwlock {
 	struct wchan *rwlock_wchan;
 	struct spinlock rwlock_lock;
     volatile unsigned reader_count;
+	struct cpu* reader_holders[1000];
+	struct cpu* writer_holder;
     volatile bool writer_in;
     volatile int writer_waiting;
 };
