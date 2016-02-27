@@ -1,0 +1,2 @@
+dir ../src/kern/compile/ASST1
+target remote unix:.sockets/gdb
