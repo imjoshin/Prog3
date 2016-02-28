@@ -1,0 +1,340 @@
+Only in src: defs.mk
+Only in src/kern/compile: ASST1
+diff -rw -x '*.[^chsS]' /home/campus16/cs4411gr/public/baseP1/kern/conf/conf.kern src/kern/conf/conf.kern
+439a440
+> file		test/asst1_tests.c
+diff -rw -x '*.[^chsS]' /home/campus16/cs4411gr/public/baseP1/kern/include/lib.h src/kern/include/lib.h
+183c183
+< __DEAD void badassert(const char *expr, const char *file,
+---
+> void badassert(const char *expr, const char *file,
+diff -rw -x '*.[^chsS]' /home/campus16/cs4411gr/public/baseP1/kern/include/synch.h src/kern/include/synch.h
+31a32,33
+> #define READ 0
+> #define WRITE 1
+76a79,81
+> 	struct wchan *lock_wchan;
+> 	struct spinlock lock_lock;
+>         volatile unsigned lock_count;
+78a84
+> 	volatile struct cpu* lock_holder;
+116,117c122,124
+<         // add what you need here
+<         // (don't forget to mark things volatile as needed)
+---
+>     struct wchan *cv_wchan;
+> 	struct spinlock cv_lock;
+>         volatile unsigned cv_count;
+139a147,156
+> struct rwlock {
+>     char *rwlk_name;
+> 	struct wchan *rwlock_wchan;
+> 	struct spinlock rwlock_lock;
+>     volatile unsigned reader_count;
+> 	volatile struct cpu* reader_holders[1000];
+> 	volatile struct cpu* writer_holder;
+>     volatile bool writer_in;
+>     volatile int writer_waiting;
+> };
+140a158,162
+> struct rwlock* rwlock_create(const char *name);
+> void rwlock_destroy(struct rwlock *);
+> void rwlock_acquire(struct rwlock *, int mode);
+> void rwlock_release(struct rwlock *, int mode);
+> bool rwlock_do_i_hold(struct rwlock *);
+diff -rw -x '*.[^chsS]' /home/campus16/cs4411gr/public/baseP1/kern/include/test.h src/kern/include/test.h
+42a43,46
+> #ifndef DEBUG
+> #define DEBUG
+> #endif
+> 
+57a62,64
+> /* User unit tests for assignment one */
+> int asst1_tests(int, char **);
+>  
+81a89,108
+> /* lock unit tests */
+> int locku1(void);
+> int locku2(void);
+> int locku3(void);
+> int locku4(void);
+> 
+> /* cv tests */
+> int cvu1(void);
+> int cvu2(void);
+> int cvu3(void);
+> int cvu4(void);
+> 
+> /* rwlock unit tests */
+> int rwlocku1(void);
+> int rwlocku2(void);
+> int rwlocku3(void);
+> int rwlocku4(void);
+> int rwlocku5(void);
+> int rwlocku6(void);
+> 
+106a134,135
+> /* Lock Tests */
+> int locktest1(int, char**);
+diff -rw -x '*.[^chsS]' /home/campus16/cs4411gr/public/baseP1/kern/lib/kprintf.c src/kern/lib/kprintf.c
+214,215c214,218
+< 	panic("Assertion failed: %s, at %s:%d (%s)\n",
+< 	      expr, file, line, func);
+---
+> 	#ifndef DEBUG
+> 		panic("Assertion failed: %s, at %s:%d (%s)\n", expr, file, line, func);
+> 	#else
+> 		kprintf("Debug Assertion failed: %s, at %s:%d (%s)\n", expr, file, line, func);
+> 	#endif
+diff -rw -x '*.[^chsS]' /home/campus16/cs4411gr/public/baseP1/kern/main/main.c src/kern/main/main.c
+104c104
+< 	kprintf("Put-your-group-name-here's system version %s (%s #%d)\n",
+---
+> 	kprintf("Backus's system version %s (%s #%d)\n",
+diff -rw -x '*.[^chsS]' /home/campus16/cs4411gr/public/baseP1/kern/main/menu.c src/kern/main/menu.c
+478a479
+> 	"[a1a] User unit tests Project 1     ",
+580a582,585
+> 
+> 	/* User unit tests */
+> 	{ "a1a",	asst1_tests },
+> 
+Only in src/kern/test: asst1_tests.c
+Only in src/kern/test: .sockets
+diff -rw -x '*.[^chsS]' /home/campus16/cs4411gr/public/baseP1/kern/thread/synch.c src/kern/thread/synch.c
+41a42
+> #include <cpu.h>
+157c158,163
+<         // add stuff here as needed
+---
+> 	lock->lock_wchan = wchan_create(lock->lk_name);
+> 	if (lock->lock_wchan == NULL) {
+> 		kfree(lock->lk_name);
+> 		kfree(lock);
+> 		return NULL;
+> 	}
+158a165,167
+> 	spinlock_init(&lock->lock_lock);
+>         lock->lock_count = 1;
+> 		lock->lock_holder = NULL;
+167a177,178
+>     	spinlock_cleanup(&lock->lock_lock);
+> 	    wchan_destroy(lock->lock_wchan);
+176c187,188
+<         // Write this
+---
+>         KASSERT(lock != NULL);
+>         KASSERT(curthread->t_in_interrupt == false);
+178c190,198
+<         (void)lock;  // suppress warning until code gets written
+---
+> 	/* Use the lock spinlock to protect the wchan as well. */
+> 	spinlock_acquire(&lock->lock_lock);
+>         while (lock->lock_count == 0) {
+> 		    wchan_sleep(lock->lock_wchan, &lock->lock_lock);
+>         }
+>         KASSERT(lock->lock_count > 0);
+>         lock->lock_count--;
+> 		lock->lock_holder = curcpu->c_self;
+> 	spinlock_release(&lock->lock_lock);
+184c204,212
+<         // Write this
+---
+>         KASSERT(lock != NULL);
+>         KASSERT(lock_do_i_hold(lock));
+> 
+> 	spinlock_acquire(&lock->lock_lock);
+> 
+>         lock->lock_count++;
+>         KASSERT(lock->lock_count > 0);
+> 		lock->lock_holder = NULL;
+> 	wchan_wakeone(lock->lock_wchan, &lock->lock_lock);
+186c214
+<         (void)lock;  // suppress warning until code gets written
+---
+> 	spinlock_release(&lock->lock_lock);
+192,194c220,222
+<         // Write this
+< 
+<         (void)lock;  // suppress warning until code gets written
+---
+>         if(!CURCPU_EXISTS()){
+> 			return true;
+> 		}
+196c224
+<         return true; // dummy until code gets written
+---
+> 		return (lock->lock_holder == curcpu->c_self);
+220c248,256
+<         // add stuff here as needed
+---
+>     cv->cv_wchan = wchan_create(cv->cv_name);
+> 	if (cv->cv_wchan == NULL) {
+> 		kfree(cv->cv_name);
+> 		kfree(cv);
+> 		return NULL;
+> 	}
+> 
+> 	spinlock_init(&cv->cv_lock);
+>         cv->cv_count = 0;
+230,231c266,267
+<         // add stuff here as needed
+< 
+---
+>     spinlock_cleanup(&cv->cv_lock);
+> 	wchan_destroy(cv->cv_wchan);
+239,241c275,289
+<         // Write this
+<         (void)cv;    // suppress warning until code gets written
+<         (void)lock;  // suppress warning until code gets written
+---
+> 	//kprintf("Check if hold lock.\n");
+>     KASSERT(lock_do_i_hold(lock));
+>     lock_release(lock);
+> 	//kprintf("Passed lock_do_i_hold. Checking acquire\n");
+> 
+>     spinlock_acquire(&cv->cv_lock);
+>     cv->cv_count++;
+> 
+> 	//kprintf("I'm sleeping.\n");
+>     wchan_sleep(cv->cv_wchan, &cv->cv_lock);
+> 	//kprintf("I woke up.\n");
+> 
+>     cv->cv_count--;
+>     spinlock_release(&cv->cv_lock);
+>     lock_acquire(lock);
+247,249c295,302
+<         // Write this
+< 	(void)cv;    // suppress warning until code gets written
+< 	(void)lock;  // suppress warning until code gets written
+---
+> 	KASSERT(lock_do_i_hold(lock)); 
+> 	lock_release(lock);
+> 	spinlock_acquire(&cv->cv_lock);
+> 	//kprintf("Signalling now.\n");
+> 	wchan_wakeone(cv->cv_wchan, &cv->cv_lock);
+> 	spinlock_release(&cv->cv_lock);
+> 	lock_acquire(lock);
+>     
+255,257c308,364
+< 	// Write this
+< 	(void)cv;    // suppress warning until code gets written
+< 	(void)lock;  // suppress warning until code gets written
+---
+>     //unsigned int i;
+>     KASSERT(lock_do_i_hold(lock));
+>     lock_release(lock);
+> 
+>     spinlock_acquire(&cv->cv_lock);
+> 	wchan_wakeall(cv->cv_wchan, &cv->cv_lock);
+>     
+> 	/*for(i = 0; i < cv->cv_count; i++) {
+>         wchan_wakeone(cv->cv_wchan, &cv->cv_lock);
+>     }*/
+> 
+>     spinlock_release(&cv->cv_lock);
+> 
+>     lock_acquire(lock);
+> }
+> 
+> 
+> struct rwlock* rwlock_create(const char *name) {
+>         struct rwlock* rwlock;
+> 
+>         rwlock = kmalloc(sizeof(*rwlock));
+>         if (rwlock == NULL) {
+>                 return NULL;
+>         }
+> 
+>         rwlock->rwlk_name = kstrdup(name);
+>         if (rwlock->rwlk_name == NULL) {
+>                 kfree(rwlock);
+>                 return NULL;
+>         }
+> 
+> 	rwlock->rwlock_wchan = wchan_create(rwlock->rwlk_name);
+> 	if (rwlock->rwlock_wchan == NULL) {
+> 		kfree(rwlock->rwlk_name);
+> 		kfree(rwlock);
+> 		return NULL;
+> 	}
+> 
+> 	    spinlock_init(&rwlock->rwlock_lock);
+>         rwlock->reader_count =0;
+>         rwlock->writer_in = false;
+>         rwlock->writer_waiting = 0;
+>         rwlock->writer_holder = NULL;
+>         memset(rwlock->reader_holders, 0x0, sizeof(struct cpu) * 1000);
+>         return rwlock;
+> }
+> 
+> void rwlock_destroy(struct rwlock *rwlock)
+> {
+>         KASSERT(rwlock != NULL);
+> 
+>         // add stuff here as needed
+>     	spinlock_cleanup(&rwlock->rwlock_lock);
+> 	    wchan_destroy(rwlock->rwlock_wchan);
+> 
+>         kfree(rwlock->rwlk_name);
+>         kfree(rwlock);
+258a366,420
+> void rwlock_acquire(struct rwlock* rwlock, int mode) {
+>     int i;
+>     if(mode == READ) {
+>         spinlock_acquire(&rwlock->rwlock_lock);
+>         while(rwlock->writer_in || (rwlock->writer_waiting != 0 && rwlock->reader_count != 0)) {
+>             wchan_sleep(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
+>         }
+>         rwlock->reader_count++;
+>         for(i = 0; rwlock->reader_holders[i] != NULL; i++) {}
+>         rwlock->reader_holders[i] = curcpu->c_self;
+>         spinlock_release(&rwlock->rwlock_lock);
+>     } else if(mode == WRITE) {
+>         spinlock_acquire(&rwlock->rwlock_lock);
+>         rwlock->writer_waiting++;
+>         while(rwlock->reader_count != 0 || rwlock->writer_in) {
+>             wchan_sleep(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
+>         }
+>         rwlock->writer_in = true;
+>         rwlock->writer_waiting--;
+>         rwlock->writer_holder = curcpu->c_self;
+>         spinlock_release(&rwlock->rwlock_lock);
+>     } else {
+>         kprintf("Improper mode!!!!!\n");
+>     }
+> }
+> void rwlock_release(struct rwlock* rwlock, int mode) {
+>     bool match = false;
+>     int i;
+>     KASSERT(rwlock != NULL);
+> 
+> 	spinlock_acquire(&rwlock->rwlock_lock);
+>     if(mode == READ) {
+>         for (i = 0; i < 1000; i++) {
+>             if(rwlock->reader_holders[i] == curcpu->c_self) {
+>                 match = true;
+>                 break;
+>             }
+>         }
+>         KASSERT(match);
+>         rwlock->reader_holders[i] = NULL;
+>         rwlock->reader_count--;
+>     } else if(mode == WRITE) {
+>         KASSERT(rwlock->writer_holder == curcpu->c_self);
+>         rwlock->writer_holder = NULL;
+>         rwlock->writer_in = false;
+>     } else {
+>         kprintf("Improper mode!!!!!\n");
+>     }
+> 
+> 	wchan_wakeall(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
+> 	spinlock_release(&rwlock->rwlock_lock);
+> }
+> 
+> 
+> 
+diff -rw -x '*.[^chsS]' /home/campus16/cs4411gr/public/baseP1/kern/thread/thread.c src/kern/thread/thread.c
+132a133
+> 
+Only in src: .sockets
