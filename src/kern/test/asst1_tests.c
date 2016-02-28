@@ -142,7 +142,13 @@ struct lock* cvGlobalLock;
 
 //A thread that just waits on a lock.
 static void cvwaiter(struct cv* cv) {
+
 	lock_acquire(cvGlobalLock);
+
+	spinlock_acquire(&waiters_lock);
+	waiters_running++;
+	spinlock_release(&waiters_lock);
+
 	cv_wait(cv, cvGlobalLock);
 
 	spinlock_acquire(&waiters_lock);
@@ -160,9 +166,6 @@ static void cvwaiter(struct cv* cv) {
 static void makecvwaiter(struct cv* cv) {
 	int result;
 
-	spinlock_acquire(&waiters_lock);
-	waiters_running++;
-	spinlock_release(&waiters_lock);
 
 	result = thread_fork("cv waiter", NULL, (void*) cvwaiter, cv, 0);
 	if (result) {
@@ -186,15 +189,19 @@ static struct cv* makecv() {
 
 //Verify that you can signal a cv
 int cvu1(){
+	waiters_running = 0;
 	kprintf("Waiter should print when signalled.\n");
 	struct cv* cv = makecv();
 	cvGlobalLock = makelock();
 
-	lock_acquire(cvGlobalLock);
 	makecvwaiter(cv);
+	clocksleep(1);
+
+	lock_acquire(cvGlobalLock);
 	cv_signal(cv, cvGlobalLock);
 	lock_release(cvGlobalLock);
 
+	while(waiters_running > 0);
 	lock_destroy(cvGlobalLock);
 	ok();
 	return 0;
@@ -202,25 +209,34 @@ int cvu1(){
 
 //Verify that cv's will wait until signalled, and only one is released at a time
 int cvu2(){
+	waiters_running = 0;
 	struct cv* cv = makecv();
 	cvGlobalLock = makelock();
 
 	makecvwaiter(cv);
 	makecvwaiter(cv);
 	makecvwaiter(cv);
+	while(waiters_running < 3);
 
 	lock_acquire(cvGlobalLock);
 	kprintf("First signal.\n");
 	cv_signal(cv, cvGlobalLock);
+	lock_release(cvGlobalLock);
 	clocksleep(1);
+
+	lock_acquire(cvGlobalLock);
 	kprintf("Second signal.\n");
 	cv_signal(cv, cvGlobalLock);
+	lock_release(cvGlobalLock);
 	clocksleep(1);
+
+	lock_acquire(cvGlobalLock);
 	kprintf("Third signal.\n");
 	cv_signal(cv, cvGlobalLock);
-	clocksleep(1);
 	lock_release(cvGlobalLock);
+	clocksleep(1);
 
+	while(waiters_running > 0);
 	lock_destroy(cvGlobalLock);
 	ok();
 	return 0;
@@ -228,17 +244,21 @@ int cvu2(){
 
 //cv_broadcast releases all waiters
 int cvu3(){
+	waiters_running = 0;
 	struct cv* cv = makecv();
 	cvGlobalLock = makelock();
 
 	makecvwaiter(cv);
 	makecvwaiter(cv);
 	makecvwaiter(cv);
+	while(waiters_running < 3);
 
+	lock_acquire(cvGlobalLock);
 	kprintf("Three CV's should be signalled.\n");
-	
 	cv_broadcast(cv, cvGlobalLock);
+	lock_release(cvGlobalLock);
 	
+	while(waiters_running > 0);
 	lock_destroy(cvGlobalLock);
 	ok();
 	return 0;
@@ -246,16 +266,25 @@ int cvu3(){
 
 //Verify that signals only release currently waiting cv's
 int cvu4(){
-	int i;
+	waiters_running = 0;
 	struct cv* cv = makecv();
 	cvGlobalLock = makelock();
 
+	lock_acquire(cvGlobalLock);
 	cv_signal(cv, cvGlobalLock);
+	lock_release(cvGlobalLock);
+
 	makecvwaiter(cv);
+
+	while(waiters_running < 1);
 	kprintf("There should be a delay before the waiter completes.\n");
-	for(i = 0; i < 1000000; i++);
+	clocksleep(5);
+
+	lock_acquire(cvGlobalLock);
 	cv_signal(cv, cvGlobalLock);
+	lock_release(cvGlobalLock);
 	
+	while(waiters_running > 0);
 	lock_destroy(cvGlobalLock);
 	ok();
 	return 0;
@@ -270,22 +299,175 @@ int cvu4(){
 */
 
 #define RWNAMESTRING "RWLOCK-TESTS"
-/*
+
 static struct rwlock* makerwlock() {
 	struct rwlock* rwlock;
 
-	rwlock = rwlock_create(NAMESTRING);
+	rwlock = rwlock_create(RWNAMESTRING);
 	if (rwlock == NULL) {
-		panic("asst1: whoops: lock_create failed\n");
+		panic("asst1: whoops: rwlock_create failed\n");
 	}
 	return rwlock;
 }
-*/
 
 
+//A thread that just waits on a lock.
+static void readwaiter(struct rwlock* rwlock) {
+	rwlock_acquire(rwlock, READ);
+
+	spinlock_acquire(&waiters_lock);
+	kprintf("READER: %d processes currently running.\n", waiters_running);
+	spinlock_release(&waiters_lock);
+	clocksleep(5);
+	spinlock_acquire(&waiters_lock);
+	KASSERT(waiters_running > 0);
+	waiters_running--;
+	spinlock_release(&waiters_lock);
+
+	kprintf("Read Waiter complete.\n");
+	
+	rwlock_release(rwlock, READ);
+}
+
+//A thread that just waits on a lock.
+static void writewaiter(struct rwlock* rwlock) {
+	rwlock_acquire(rwlock, WRITE);
+
+	spinlock_acquire(&waiters_lock);
+	kprintf("WRITER: %d processes currently running.\n", waiters_running);
+	spinlock_release(&waiters_lock);
+	clocksleep(5);
+	spinlock_acquire(&waiters_lock);
+	KASSERT(waiters_running > 0);
+	waiters_running--;
+	spinlock_release(&waiters_lock);
+
+	kprintf("Write Waiter complete.\n");
+	
+	rwlock_release(rwlock, WRITE);
+}
+
+// Set up a waiter
+static void rwmakewaiter(struct rwlock* rwlock, int mode) {
+	int result;
+
+	spinlock_acquire(&waiters_lock);
+	waiters_running++;
+	spinlock_release(&waiters_lock);
+
+	if(mode == READ){
+		result = thread_fork("read lock waiter", NULL, (void*) readwaiter, rwlock, 0);
+		if (result) {
+			panic("rwlockunit: thread_fork failed\n");
+		}
+	}else if(mode == WRITE){
+		result = thread_fork("write lock waiter", NULL, (void*) writewaiter, rwlock, 0);
+		if (result) {
+			panic("rwlockunit: thread_fork failed\n");
+		}
+	}
+	clocksleep(1);
+}
 
 
+//Two reads should be able to hold lock at the same time
+int rwlocku1(){
+	waiters_running = 0;
+	struct rwlock* rwlock = makerwlock();
 
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, READ);
+
+	while(waiters_running > 0);
+	
+	ok();
+	rwlock_destroy(rwlock);
+	return 0;
+}
+
+//Two writers should wait for the first to finish
+int rwlocku2(){
+	waiters_running = 0;
+	struct rwlock* rwlock = makerwlock();
+
+	rwmakewaiter(rwlock, WRITE);
+	rwmakewaiter(rwlock, WRITE);
+
+	while(waiters_running > 0);
+	
+	ok();
+	rwlock_destroy(rwlock);
+	return 0;
+}
+//writers should wait for readers to finish
+int rwlocku3(){
+	waiters_running = 0;
+	struct rwlock* rwlock = makerwlock();
+
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, WRITE);
+
+	while(waiters_running > 0);
+	
+	ok();
+	rwlock_destroy(rwlock);
+	return 0;
+}
+//readers should wait for writers to finish
+int rwlocku4(){
+	waiters_running = 0;
+	struct rwlock* rwlock = makerwlock();
+
+	rwmakewaiter(rwlock, WRITE);
+	rwmakewaiter(rwlock, READ);
+
+	while(waiters_running > 0);
+	
+	ok();
+	rwlock_destroy(rwlock);
+	return 0;
+}
+//writers should wait for all readers to finish
+int rwlocku5(){
+	waiters_running = 0;
+	struct rwlock* rwlock = makerwlock();
+
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, WRITE);
+
+	while(waiters_running > 0);
+	
+	ok();
+	rwlock_destroy(rwlock);
+	return 0;
+}
+//readers and writers should all wait to prevent starvation
+int rwlocku6(){
+	waiters_running = 0;
+	struct rwlock* rwlock = makerwlock();
+
+	rwmakewaiter(rwlock, WRITE);
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, WRITE);
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, WRITE);
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, READ);
+	rwmakewaiter(rwlock, READ);
+
+	while(waiters_running > 0);
+	
+	ok();
+	rwlock_destroy(rwlock);
+	return 0;
+}
 
 
 
@@ -316,9 +498,9 @@ int asst1_tests(int nargs , char ** args){
 	int ret;
   int i;
 	int (*locktests[4])();
-	//int (*rwlocktests[9])();
+	int (*rwlocktests[6])();
 	int (*cvtests[4])();
-
+	
 	locktests[0] = locku1;
 	locktests[1] = locku2;
 	locktests[2] = locku3;
@@ -328,51 +510,49 @@ int asst1_tests(int nargs , char ** args){
 	cvtests[1] = cvu2;
 	cvtests[2] = cvu3;
 	cvtests[3] = cvu4;
-
-/*
+	
 	rwlocktests[0] = rwlocku1;
 	rwlocktests[1] = rwlocku2;
 	rwlocktests[2] = rwlocku3;
 	rwlocktests[3] = rwlocku4;
-	rwlocktests[6] = rwlocku7;
-	rwlocktests[7] = rwlocku8;
-	rwlocktests[8] = rwlocku9;
-*/
+	rwlocktests[4] = rwlocku5;
+	rwlocktests[5] = rwlocku6;
+
 
 
   kprintf("Args %d\n",nargs);
   for (i=0;i<nargs;i++)kprintf("Arg[%d] <%s>\n",i,args[i]);
 	
-
-	kprintf("-- LOCK TESTS --\n");
+	
+	kprintf("\n\n-- LOCK TESTS --\n\n");
 
 	for(i = 0; i < 4; i++){
 		kprintf("Starting lock test %d\n", i + 1);
 		ret = locktests[i]();
 		err += ret;
-		kprintf("Test %d complete with status %d\n", i + 1, ret);
+		kprintf("Test %d complete with status %d\n\n", i + 1, ret);
 	}
 
-	kprintf("-- CV TESTS --\n");
+	kprintf("\n\n-- CV TESTS --\n\n");
 
 	for(i = 0; i < 4; i++){
 		kprintf("Starting cv test %d\n", i + 1);
 		ret = cvtests[i]();
 		err += ret;
-		kprintf("Test %d complete with status %d\n", i + 1, ret);
+		kprintf("Test %d complete with status %d\n\n", i + 1, ret);
 	}
-/*
-	kprintf("-- RWLOCK TESTS --\n");
+	
+	kprintf("\n\n-- RWLOCK TESTS --\n\n");
 
-	for(i = 0; i < 9; i++){
+	for(i = 0; i < 6; i++){
 		kprintf("Starting rwlock test %d\n", i + 1);
-		ret = tests[i]();
+		ret = rwlocktests[i]();
 		err += ret;
-		kprintf("Test %d complete with status %d\n", i + 1, ret);
+		kprintf("Test %d complete with status %d\n\n", i + 1, ret);
 	}
 
-*/
 
+  kprintf("\n---------------------------\n");
   kprintf("Tests complete with status %d\n",err);
   kprintf("UNIT tests complete\n");
   kprintf("Number of errors: %d\n", err);

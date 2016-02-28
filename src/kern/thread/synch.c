@@ -272,18 +272,21 @@ cv_destroy(struct cv *cv)
 void
 cv_wait(struct cv *cv, struct lock *lock)
 {
-        if(lock_do_i_hold(lock)) {
-            lock_release(lock);
+	//kprintf("Check if hold lock.\n");
+    KASSERT(lock_do_i_hold(lock));
+    lock_release(lock);
+	//kprintf("Passed lock_do_i_hold. Checking acquire\n");
 
-            spinlock_acquire(&cv->cv_lock);
-            cv->cv_count++;
+    spinlock_acquire(&cv->cv_lock);
+    cv->cv_count++;
 
-		    wchan_sleep(cv->cv_wchan, &cv->cv_lock);
+	//kprintf("I'm sleeping.\n");
+    wchan_sleep(cv->cv_wchan, &cv->cv_lock);
+	//kprintf("I woke up.\n");
 
-            cv->cv_count--;
-            spinlock_release(&lock->lock_lock);
-            lock_acquire(lock);
-        }
+    cv->cv_count--;
+    spinlock_release(&cv->cv_lock);
+    lock_acquire(lock);
 }
 
 void
@@ -291,7 +294,10 @@ cv_signal(struct cv *cv, struct lock *lock)
 {
 	KASSERT(lock_do_i_hold(lock)); 
 	lock_release(lock);
+	spinlock_acquire(&cv->cv_lock);
+	//kprintf("Signalling now.\n");
 	wchan_wakeone(cv->cv_wchan, &cv->cv_lock);
+	spinlock_release(&cv->cv_lock);
 	lock_acquire(lock);
     
 }
@@ -299,18 +305,20 @@ cv_signal(struct cv *cv, struct lock *lock)
 void
 cv_broadcast(struct cv *cv, struct lock *lock)
 {
-    unsigned int i;
-    if(lock_do_i_hold(lock)) {
-       lock_release(lock);
+    //unsigned int i;
+    KASSERT(lock_do_i_hold(lock));
+    lock_release(lock);
 
-        spinlock_acquire(&cv->cv_lock);
-        for(i = 0; i < cv->cv_count; i++) {
-            wchan_wakeone(cv->cv_wchan, &cv->cv_lock);
-        }
-        spinlock_release(&lock->lock_lock);
+    spinlock_acquire(&cv->cv_lock);
+	wchan_wakeall(cv->cv_wchan, &cv->cv_lock);
+    
+	/*for(i = 0; i < cv->cv_count; i++) {
+        wchan_wakeone(cv->cv_wchan, &cv->cv_lock);
+    }*/
 
-        lock_acquire(lock);
-    }
+    spinlock_release(&cv->cv_lock);
+
+    lock_acquire(lock);
 }
 
 
@@ -404,7 +412,7 @@ void rwlock_release(struct rwlock* rwlock, int mode) {
         kprintf("Improper mode!!!!!\n");
     }
 
-	wchan_wakeone(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
+	wchan_wakeall(rwlock->rwlock_wchan, &rwlock->rwlock_lock);
 	spinlock_release(&rwlock->rwlock_lock);
 }
 

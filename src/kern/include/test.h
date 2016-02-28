@@ -98,6 +98,14 @@ int cvu2(void);
 int cvu3(void);
 int cvu4(void);
 
+/* rwlock unit tests */
+int rwlocku1(void);
+int rwlocku2(void);
+int rwlocku3(void);
+int rwlocku4(void);
+int rwlocku5(void);
+int rwlocku6(void);
+
 /* filesystem tests */
 int fstest(int, char **);
 int readstress(int, char **);
