@@ -53,6 +53,7 @@ as_create(void)
 	/*
 	 * Initialize as needed.
 	 */
+	/*
 	as->as_vbase1 = 0;
 	as->as_pbase1 = 0;
 	as->as_npages1 = 0;
@@ -60,6 +61,7 @@ as_create(void)
 	as->as_pbase2 = 0;
 	as->as_npages2 = 0;
 	as->as_stackpbase = 0;
+	*/
 
 	return as;
 }
@@ -77,12 +79,12 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	/*
 	 * Write this.
 	 */
-
+	/*
 	new->as_vbase1 = old->as_vbase1;
 	new->as_npages1 = old->as_npages1;
 	new->as_vbase2 = old->as_vbase2;
 	new->as_npages2 = old->as_npages2;
-
+	*/
 	*ret = newas;
 	return 0;
 }

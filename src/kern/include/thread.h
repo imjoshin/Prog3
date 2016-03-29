@@ -39,6 +39,10 @@
 #include <array.h>
 #include <spinlock.h>
 #include <threadlist.h>
+#include <synch.h>
+#include <vnode.h>
+#include <uio.h>
+#include <limits.h>
 
 struct cpu;
 
@@ -70,10 +74,10 @@ struct fdesc {
 	int flags;
 	int refcount;
 	off_t offset;
-	struct vnode vn;
-	struct lock fdlock;
-	struct uio fduio;
-}
+	struct vnode* vn;
+	struct lock* fdlock;
+	struct uio* fduio;
+};
 
 
 /* Thread structure. */
@@ -86,8 +90,7 @@ struct thread {
 	const char *t_wchan_name;	/* Name of wait channel, if sleeping */
 	threadstate_t t_state;		/* State this thread is in */
 
-	struct fdesc t_fdtable[OPEN_MAX];
-	struct addrspace *t_addrspace;	/* virtual address space */
+	struct fdesc* t_fdtable[OPEN_MAX];
 
 	/*
 	 * Thread subsystem internal fields.

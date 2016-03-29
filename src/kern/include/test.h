@@ -106,6 +106,12 @@ int rwlocku4(void);
 int rwlocku5(void);
 int rwlocku6(void);
 
+/* io tests */
+int io1(void);
+int io2(void);
+int io3(void);
+int io4(void);
+
 /* filesystem tests */
 int fstest(int, char **);
 int readstress(int, char **);

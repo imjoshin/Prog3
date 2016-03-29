@@ -35,6 +35,11 @@
 #include <thread.h>
 #include <current.h>
 #include <syscall.h>
+#include <kern/fcntl.h>
+#include <copyinout.h>
+#include <vfs.h>
+#include <stat.h>
+#include <proc.h>
 
 
 /*
@@ -127,7 +132,7 @@ syscall(struct trapframe *tf)
 	    case SYS_fork:
 			
 			break;
-	    case SYS_execve:
+	    case SYS_execv:
 			
 			break;
 	    case SYS_waitpid:
@@ -185,45 +190,83 @@ void enter_forked_process(struct trapframe *tf){
 }
 
 
-int open(const char* filename, int flags, int mode){
-	int i, fd, t, retval;
+int open(const char* filename, int flags){
+	int fd, retval, flagmask;
+	size_t len;
 	char* name;
 	struct vnode *vn;
+	struct fdesc* newfdesc;
+	struct stat *statbuf; //used for file properties
 
-	//check valid arguments
-	//TODO exclusive or on flags
-	if(filename != NULL || !(flags & O_RDONLY == 0 || flags & O_WRONLY == 0 || flags & O_RDWR == 0)){
+	flagmask = O_CREAT | O_EXCL | O_TRUNC | O_APPEND;
+	flagmask = flags & !flagmask; //remove extra flags
+
+	//check valid arguments, no more than one flag is set, one must be set
+	if(filename == NULL || (flagmask != O_RDONLY && flagmask != O_WRONLY && flagmask != O_RDWR)){
 		return -1;
+	}
+
+	name = kmalloc(sizeof(char) * PATH_MAX);
+	statbuf = kmalloc(sizeof(struct stat));
+
+	newfdesc = (struct fdesc*) kmalloc(sizeof(struct fdesc));
+	if(newfdesc == NULL) {
+		kfree(name);
+		kfree(statbuf);
+		return -2;
 	}
 
 	//find file descriptor
 	for(fd = 0; fd < OPEN_MAX; fd++){
-		if(curthread->t_fdtable[i] == NULL) break;
+		if((void*) curthread->t_fdtable[fd] == NULL) break;
 	}
-	
+	curthread->t_fdtable[fd] = newfdesc;
+
 	//protect file name and open file
-	retval = copyinstr(filename, name, sizeof(filename), NULL);
-	t = vfs_open(name, flags, mode, &vn);
+	retval = copyinstr((const_userptr_t) filename, name, PATH_MAX, &len);
+
+	kprintf("Name before: %s, Name after: %s, len: %d\n", filename, name, len);
+	if(retval < 0){
+		kfree(name);
+		kfree(statbuf);
+		kfree(newfdesc);
+		return -3;
+	}
+
+	retval = vfs_open(name, flags, 0, &vn);
+	if(retval){
+		kfree(name);
+		kfree(statbuf);
+		kfree(newfdesc);
+		return 1000+retval;
+	}
 
 	//set variables in file table
 	curthread->t_fdtable[fd]->fname = name;
 	curthread->t_fdtable[fd]->flags = flags;
 	curthread->t_fdtable[fd]->vn = vn;
 	curthread->t_fdtable[fd]->fdlock = lock_create(name);
+	curthread->t_fdtable[fd]->refcount = 1;
 
-	//TODO, if append, set to file size
-	if(flags & O_APPEND != 0){
-
+	//if append, set to file size
+	if((flags & O_APPEND) != 0){
+		//get vn statistics and set to current size
+		VOP_STAT(vn, statbuf);
+		curthread->t_fdtable[fd]->offset = statbuf->st_size;
 	}else{
 		curthread->t_fdtable[fd]->offset = 0;
 	}
+
+	kprintf("open refcount = %d\n", curthread->t_fdtable[fd]->refcount);
+
+	kfree(statbuf);
 	
-	//*ret = fd;
-	return 0;
+	return fd;
 }
 
-ssize_t read(int filehandle, void* buf, size_t size){
-	struct uio read;
+ssize_t read(int fd, void* buf, size_t size){
+	int retval;
+	struct uio* read;
 
 	//check valid arguments
 	if(curthread->t_fdtable[fd] == NULL || buf == NULL || size == 0){
@@ -231,60 +274,110 @@ ssize_t read(int filehandle, void* buf, size_t size){
 	}
 	lock_acquire(curthread->t_fdtable[fd]->fdlock);
 
+	read = kmalloc(sizeof(struct uio));
+
 	//set uio variables
-	read->uio_iovec.iov_ubase = buf;
-  	read->uio_iovec.iov_len = size;
+	read->uio_iov->iov_ubase = buf;
+  	read->uio_iov->iov_len = size;
   	read->uio_offset = curthread->t_fdtable[fd]->offset;
   	read->uio_resid = size;
   	read->uio_segflg = UIO_USERSPACE;
- 	read->uio_rw = rw;
+ 	read->uio_rw = UIO_READ;
   	read->uio_space = curthread->t_proc->p_addrspace; //WE THINK?!?!
 
 	//read
-	result = VOP_READ(curthread->t_fdtable[fd]->vn, &read);
+	retval = VOP_READ(curthread->t_fdtable[fd]->vn, read);
+	if(retval < 0){
+		return -1;
+	}
 
 	//update offset and set return to how many bytes read
-	curthread->t_fdtable[fd]->offset = read.uio_offset;
-
-	return size - readuio.uio_resid;
+	curthread->t_fdtable[fd]->offset = read->uio_offset;
+	lock_release(curthread->t_fdtable[fd]->fdlock);
+	return size - read->uio_resid;
 }
 
-int write(int filehandle, const void* buf, size_t size){
+int write(int fd, void* buf, size_t size){
+	int retval;
+	struct uio* write;
 
+	//check valid arguments
+	if(curthread->t_fdtable[fd] == NULL || buf == NULL || size == 0){
+		return -1;
+	}
+	lock_acquire(curthread->t_fdtable[fd]->fdlock);
+
+	write = kmalloc(sizeof(struct uio));
+
+	//set uio variables
+	write->uio_iov->iov_ubase = buf;
+  	write->uio_iov->iov_len = size;
+  	write->uio_offset = curthread->t_fdtable[fd]->offset;
+  	write->uio_resid = size;
+  	write->uio_segflg = UIO_USERSPACE;
+ 	write->uio_rw = UIO_WRITE;
+  	write->uio_space = curthread->t_proc->p_addrspace; //WE THINK?!?!
+
+	//read
+	retval = VOP_WRITE(curthread->t_fdtable[fd]->vn, write);
+	if(retval < 0){
+		return -1;
+	}
+
+	//update offset and set return to how many bytes read
+	curthread->t_fdtable[fd]->offset = write->uio_offset;
+	lock_release(curthread->t_fdtable[fd]->fdlock);
+	return size - write->uio_resid;
 }
 
-int close(int filehandle){
+int close(int fd){
+	if(curthread->t_fdtable[fd] == NULL){
+		return -1;
+	}
+
 	//acquire lock
 	lock_acquire(curthread->t_fdtable[fd]->fdlock);
+
+	kprintf("close refcount = %d\n", curthread->t_fdtable[fd]->refcount);
 
 	//decrease reference counter
 	curthread->t_fdtable[fd]->refcount--;
 	
 	//if no more references, close fd
 	if(curthread->t_fdtable[fd]->refcount == 0){
-		curthread->t_fdtable[fd] = NULL;
 		vfs_close(curthread->t_fdtable[fd]->vn);
+		kfree(curthread->t_fdtable[fd]);
+		kprintf("freed fd \n");
+		curthread->t_fdtable[fd] = NULL;
 	}else{
 		lock_release(curthread->t_fdtable[fd]->fdlock);
 	}
+
+	return 0;
 }
 
 pid_t getpid(){
-	return curthread->t_proc->p_pid;
+	return curthread->t_proc->p_id;
 }
 
 pid_t fork(){
-
+	return 0;
 }
 
 int execv(const char *prog, char *const *args){
-
+	(void) prog;
+	(void) args;
+	return 0;
 }
 
 pid_t waitpid(pid_t pid, int *returncode, int flags){
-
+	(void) pid;
+	(void) returncode;
+	(void) flags;
+	return 0;
 }
 
-int _exit(int code){
-
+void _exit(int code){
+	(void) code;
+	while(1);
 }

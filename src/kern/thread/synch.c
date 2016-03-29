@@ -274,10 +274,10 @@ cv_wait(struct cv *cv, struct lock *lock)
 {
 	//kprintf("Check if hold lock.\n");
     KASSERT(lock_do_i_hold(lock));
+    spinlock_acquire(&cv->cv_lock);
+
     lock_release(lock);
 	//kprintf("Passed lock_do_i_hold. Checking acquire\n");
-
-    spinlock_acquire(&cv->cv_lock);
     cv->cv_count++;
 
 	//kprintf("I'm sleeping.\n");
