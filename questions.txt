@@ -1,0 +1,2 @@
+How much do we do with the address space? Every method in addrspace.c?
+Do we need to create a new address space for a new thread?
