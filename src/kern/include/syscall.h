@@ -51,6 +51,15 @@ void enter_forked_process(struct trapframe *tf);
 __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 		       vaddr_t stackptr, vaddr_t entrypoint);
 
+//system call functions for assignment 2
+int open(const char *filename, int flags, ...);
+ssize_t read(int filehandle, void *buf, size_t size);
+ssize_t write(int filehandle, const void *buf, size_t size);
+int close(int filehandle);
+__DEAD void _exit(int code);
+int execv(const char *prog, char *const *args);
+pid_t fork(void);
+pid_t waitpid(pid_t pid, int *returncode, int flags);
 
 /*
  * Prototypes for IN-KERNEL entry points for system call implementations.

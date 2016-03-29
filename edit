@@ -1,1 +1,1 @@
-gedit src/kern/thread/synch.c src/kern/include/synch.h src/kern/thread/thread.c src/kern/include/thread.h src/kern/test/asst1_tests.c &
+gedit src/kern/syscall/loadelf.c src/kern/syscall/runprogram.c src/kern/lib/uio.c src/kern/include/addrspace.h src/kern/include/elf.h src/kern/include/proc.h src/kern/arch/mips/locore/trap.c src/kern/arch/mips/syscall/syscall.c &

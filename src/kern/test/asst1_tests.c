@@ -7,6 +7,7 @@
 #include <clock.h>
 #include <test.h>
 
+//Jon Faron, Riley Hirn, Josh Johnson
 
 static unsigned waiters_running = 0;
 static struct spinlock waiters_lock = SPINLOCK_INITIALIZER;

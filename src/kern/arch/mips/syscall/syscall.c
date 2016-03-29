@@ -109,7 +109,33 @@ syscall(struct trapframe *tf)
 				 (userptr_t)tf->tf_a1);
 		break;
 
-	    /* Add stuff here */
+	    case SYS_open:
+			
+			break;
+	    case SYS_read:
+			
+			break;
+	    case SYS_write:
+			
+			break;
+	    case SYS_close:
+			
+			break;
+	    case SYS_getpid:
+			
+			break;
+	    case SYS_fork:
+			
+			break;
+	    case SYS_execve:
+			
+			break;
+	    case SYS_waitpid:
+			
+			break;
+	    case SYS__exit:
+			
+			break;
 
 	    default:
 		kprintf("Unknown syscall %d\n", callno);
@@ -154,8 +180,111 @@ syscall(struct trapframe *tf)
  *
  * Thus, you can trash it and do things another way if you prefer.
  */
-void
-enter_forked_process(struct trapframe *tf)
-{
+void enter_forked_process(struct trapframe *tf){
 	(void)tf;
+}
+
+
+int open(const char* filename, int flags, int mode){
+	int i, fd, t, retval;
+	char* name;
+	struct vnode *vn;
+
+	//check valid arguments
+	//TODO exclusive or on flags
+	if(filename != NULL || !(flags & O_RDONLY == 0 || flags & O_WRONLY == 0 || flags & O_RDWR == 0)){
+		return -1;
+	}
+
+	//find file descriptor
+	for(fd = 0; fd < OPEN_MAX; fd++){
+		if(curthread->t_fdtable[i] == NULL) break;
+	}
+	
+	//protect file name and open file
+	retval = copyinstr(filename, name, sizeof(filename), NULL);
+	t = vfs_open(name, flags, mode, &vn);
+
+	//set variables in file table
+	curthread->t_fdtable[fd]->fname = name;
+	curthread->t_fdtable[fd]->flags = flags;
+	curthread->t_fdtable[fd]->vn = vn;
+	curthread->t_fdtable[fd]->fdlock = lock_create(name);
+
+	//TODO, if append, set to file size
+	if(flags & O_APPEND != 0){
+
+	}else{
+		curthread->t_fdtable[fd]->offset = 0;
+	}
+	
+	//*ret = fd;
+	return 0;
+}
+
+ssize_t read(int filehandle, void* buf, size_t size){
+	struct uio read;
+
+	//check valid arguments
+	if(curthread->t_fdtable[fd] == NULL || buf == NULL || size == 0){
+		return -1;
+	}
+	lock_acquire(curthread->t_fdtable[fd]->fdlock);
+
+	//set uio variables
+	read->uio_iovec.iov_ubase = buf;
+  	read->uio_iovec.iov_len = size;
+  	read->uio_offset = curthread->t_fdtable[fd]->offset;
+  	read->uio_resid = size;
+  	read->uio_segflg = UIO_USERSPACE;
+ 	read->uio_rw = rw;
+  	read->uio_space = curthread->t_proc->p_addrspace; //WE THINK?!?!
+
+	//read
+	result = VOP_READ(curthread->t_fdtable[fd]->vn, &read);
+
+	//update offset and set return to how many bytes read
+	curthread->t_fdtable[fd]->offset = read.uio_offset;
+
+	return size - readuio.uio_resid;
+}
+
+int write(int filehandle, const void* buf, size_t size){
+
+}
+
+int close(int filehandle){
+	//acquire lock
+	lock_acquire(curthread->t_fdtable[fd]->fdlock);
+
+	//decrease reference counter
+	curthread->t_fdtable[fd]->refcount--;
+	
+	//if no more references, close fd
+	if(curthread->t_fdtable[fd]->refcount == 0){
+		curthread->t_fdtable[fd] = NULL;
+		vfs_close(curthread->t_fdtable[fd]->vn);
+	}else{
+		lock_release(curthread->t_fdtable[fd]->fdlock);
+	}
+}
+
+pid_t getpid(){
+	return curthread->t_proc->p_pid;
+}
+
+pid_t fork(){
+
+}
+
+int execv(const char *prog, char *const *args){
+
+}
+
+pid_t waitpid(pid_t pid, int *returncode, int flags){
+
+}
+
+int _exit(int code){
+
 }

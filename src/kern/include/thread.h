@@ -55,7 +55,6 @@ struct cpu;
 /* Macro to test if two addresses are on the same kernel stack */
 #define SAME_STACK(p1, p2)     (((p1) & STACK_MASK) == ((p2) & STACK_MASK))
 
-
 /* States a thread can be in. */
 typedef enum {
 	S_RUN,		/* running */
@@ -63,6 +62,19 @@ typedef enum {
 	S_SLEEP,	/* sleeping */
 	S_ZOMBIE,	/* zombie; exited but not yet deleted */
 } threadstate_t;
+
+
+/* File Descriptor structure */
+struct fdesc {
+	char* fname;
+	int flags;
+	int refcount;
+	off_t offset;
+	struct vnode vn;
+	struct lock fdlock;
+	struct uio fduio;
+}
+
 
 /* Thread structure. */
 struct thread {
@@ -74,6 +86,9 @@ struct thread {
 	const char *t_wchan_name;	/* Name of wait channel, if sleeping */
 	threadstate_t t_state;		/* State this thread is in */
 
+	struct fdesc t_fdtable[OPEN_MAX];
+	struct addrspace *t_addrspace;	/* virtual address space */
+
 	/*
 	 * Thread subsystem internal fields.
 	 */
@@ -83,6 +98,7 @@ struct thread {
 	struct switchframe *t_context;	/* Saved register context (on stack) */
 	struct cpu *t_cpu;		/* CPU thread runs on */
 	struct proc *t_proc;		/* Process thread belongs to */
+
 
 	/*
 	 * Interrupt state fields.

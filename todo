@@ -1,0 +1,11 @@
+open
+read 
+write
+close
+
+getpid
+
+fork
+execv
+waitpid
+_exit

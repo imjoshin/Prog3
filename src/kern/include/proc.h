@@ -59,8 +59,11 @@ struct vnode;
  * thread_switch needs to be able to fetch the current address space
  * without sleeping.
  */
+
+
 struct proc {
 	char *p_name;			/* Name of this process */
+	pid_t p_id;
 	struct spinlock p_lock;		/* Lock for this structure */
 	unsigned p_numthreads;		/* Number of threads in this process */
 
