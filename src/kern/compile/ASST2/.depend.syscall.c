@@ -13,4 +13,6 @@ syscall.o: ../../arch/mips/syscall/syscall.c ../../include/types.h \
  ../../include/syscall.h ../../include/kern/fcntl.h \
  ../../include/copyinout.h ../../include/vfs.h ../../include/stat.h \
  ../../include/kern/stat.h ../../include/kern/stattypes.h \
- ../../include/proc.h
+ ../../include/proc.h ../../include/proc_array.h \
+ ../../include/addrspace.h ../../include/vm.h includelinks/machine/vm.h \
+ opt-dumbvm.h ../../include/../arch/mips/include/trapframe.h

@@ -91,6 +91,7 @@ struct thread {
 	threadstate_t t_state;		/* State this thread is in */
 
 	struct fdesc* t_fdtable[OPEN_MAX];
+	struct cv* t_cv;
 
 	/*
 	 * Thread subsystem internal fields.

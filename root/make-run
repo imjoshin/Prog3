@@ -1,14 +1,32 @@
 cd ASST2
 out=`(bmake)`
 echo $out 
-if [[ $out == *" error: "* ]]; then
+if [[ $out == "* error: *" ]]; then
 	exit
 fi
-
 echo
 echo
-bmake install | cat
+bmake install
 echo
 echo
 cd root
-sys161 -w kernel
+#cd ..
+#cd src
+
+#out=`(bmake)`
+#echo $out 
+#if [[ $out == "* error: *" ]]; then
+#        exit
+#fi
+#echo
+#echo
+#bmake install
+#echo
+#echo
+#cd ..
+#cd root
+echo
+echo
+echo
+
+sys161 kernel

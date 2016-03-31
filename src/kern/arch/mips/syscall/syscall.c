@@ -40,6 +40,10 @@
 #include <vfs.h>
 #include <stat.h>
 #include <proc.h>
+#include <proc_array.h>
+#include <addrspace.h>
+#include <../arch/mips/include/trapframe.h>
+#include <limits.h>
 
 
 /*
@@ -80,12 +84,20 @@
  * stack, starting at sp+16 to skip over the slots for the
  * registerized values, with copyin().
  */
+
+
+//used for new child process
+struct childinfo {
+	struct trapframe* tf;
+	struct fdesc** fdtable;
+};
+
 void
 syscall(struct trapframe *tf)
 {
 	int callno;
 	int32_t retval;
-	int err;
+	int err = 0;
 
 	KASSERT(curthread != NULL);
 	KASSERT(curthread->t_curspl == 0);
@@ -115,31 +127,34 @@ syscall(struct trapframe *tf)
 		break;
 
 	    case SYS_open:
+			err = sys_open((userptr_t)tf->tf_a0, tf->tf_a1, tf->tf_a2, &retval);
 			
 			break;
 	    case SYS_read:
-			
+			err = sys_read(tf->tf_a0, (userptr_t)tf->tf_a1, tf->tf_a2, &retval);
 			break;
 	    case SYS_write:
-			
+			//kprintf("\n\n%d %d %d %d\n\n", tf->tf_a0, tf->tf_a1, tf->tf_a2, tf->tf_a3);
+			err = sys_write(tf->tf_a0, (userptr_t)tf->tf_a1, tf->tf_a2, &retval);
 			break;
 	    case SYS_close:
-			
+			err = sys_close(tf->tf_a0);
 			break;
 	    case SYS_getpid:
-			
+			err = sys_getpid(&retval);
 			break;
 	    case SYS_fork:
-			
+			kprintf("call fork\n");
+			err = sys_fork(tf, &retval);
 			break;
 	    case SYS_execv:
-			
+			err = sys_execv((userptr_t)tf->tf_a0, (userptr_t)tf->tf_a1);
 			break;
 	    case SYS_waitpid:
-			
+			err = sys_waitpid(tf->tf_a0, (int*) &tf->tf_a1, (int) tf->tf_a2, &retval);
 			break;
 	    case SYS__exit:
-			
+			sys__exit(tf->tf_a0);
 			break;
 
 	    default:
@@ -155,6 +170,7 @@ syscall(struct trapframe *tf)
 		 * userlevel to a return value of -1 and the error
 		 * code in errno.
 		 */
+		kprintf("ERROR in syscall error check: %d\n", callno);
 		tf->tf_v0 = err;
 		tf->tf_a3 = 1;      /* signal an error */
 	}
@@ -189,9 +205,8 @@ void enter_forked_process(struct trapframe *tf){
 	(void)tf;
 }
 
-
-int open(const char* filename, int flags){
-	int fd, retval, flagmask;
+int sys_open(userptr_t filename, int flags, mode_t mode, int32_t* retval){
+	int fd, ret, flagmask;
 	size_t len;
 	char* name;
 	struct vnode *vn;
@@ -203,11 +218,18 @@ int open(const char* filename, int flags){
 
 	//check valid arguments, no more than one flag is set, one must be set
 	if(filename == NULL || (flagmask != O_RDONLY && flagmask != O_WRONLY && flagmask != O_RDWR)){
-		return -1;
+		return -7;
 	}
 
 	name = kmalloc(sizeof(char) * PATH_MAX);
+	if(name == NULL) {
+		return -2;
+	}
 	statbuf = kmalloc(sizeof(struct stat));
+	if(statbuf == NULL) {
+		kfree(name);
+		return -2;
+	}
 
 	newfdesc = (struct fdesc*) kmalloc(sizeof(struct fdesc));
 	if(newfdesc == NULL) {
@@ -223,22 +245,25 @@ int open(const char* filename, int flags){
 	curthread->t_fdtable[fd] = newfdesc;
 
 	//protect file name and open file
-	retval = copyinstr((const_userptr_t) filename, name, PATH_MAX, &len);
-
-	kprintf("Name before: %s, Name after: %s, len: %d\n", filename, name, len);
-	if(retval < 0){
+	ret = copyinstr((const_userptr_t) filename, name, PATH_MAX, &len);
+	//kprintf("Name before: %s, Name after: %s, len: %d\n", filename, name, len);
+	if(ret < 0){
 		kfree(name);
 		kfree(statbuf);
 		kfree(newfdesc);
 		return -3;
 	}
 
-	retval = vfs_open(name, flags, 0, &vn);
-	if(retval){
+	ret = vfs_open(name, flags, mode, &vn);
+	if(vn == NULL){
+		kprintf("vn is null in open\n");
+	}
+	if(ret){
 		kfree(name);
 		kfree(statbuf);
 		kfree(newfdesc);
-		return 1000+retval;
+		kprintf("vfs_open failed\n");
+		return ret;
 	}
 
 	//set variables in file table
@@ -247,6 +272,10 @@ int open(const char* filename, int flags){
 	curthread->t_fdtable[fd]->vn = vn;
 	curthread->t_fdtable[fd]->fdlock = lock_create(name);
 	curthread->t_fdtable[fd]->refcount = 1;
+
+	if(curthread->t_fdtable[fd]->vn == NULL){
+		kprintf("vn is null in open after setting fdtable\n");
+	}
 
 	//if append, set to file size
 	if((flags & O_APPEND) != 0){
@@ -257,15 +286,15 @@ int open(const char* filename, int flags){
 		curthread->t_fdtable[fd]->offset = 0;
 	}
 
-	kprintf("open refcount = %d\n", curthread->t_fdtable[fd]->refcount);
-
 	kfree(statbuf);
 	
-	return fd;
+	*retval = fd;
+	kprintf("retval: %d\n", *retval);
+	return 0;
 }
 
-ssize_t read(int fd, void* buf, size_t size){
-	int retval;
+ssize_t sys_read(int fd, void* buf, size_t size, int32_t* retval){
+	int ret;
 	struct uio* read;
 
 	//check valid arguments
@@ -286,29 +315,42 @@ ssize_t read(int fd, void* buf, size_t size){
   	read->uio_space = curthread->t_proc->p_addrspace; //WE THINK?!?!
 
 	//read
-	retval = VOP_READ(curthread->t_fdtable[fd]->vn, read);
-	if(retval < 0){
+	ret = VOP_READ(curthread->t_fdtable[fd]->vn, read);
+	if(ret < 0){
+		kfree(read);
 		return -1;
 	}
 
 	//update offset and set return to how many bytes read
 	curthread->t_fdtable[fd]->offset = read->uio_offset;
+
+	*retval = size - read->uio_resid;
+	kfree(read);
 	lock_release(curthread->t_fdtable[fd]->fdlock);
-	return size - read->uio_resid;
+
+	return 0;
 }
 
-int write(int fd, void* buf, size_t size){
-	int retval;
+int sys_write(int fd, void* buf, size_t size, int32_t* retval){
+	int ret;
 	struct uio* write;
 
+
 	//check valid arguments
-	if(curthread->t_fdtable[fd] == NULL || buf == NULL || size == 0){
+	if(buf == NULL){
+		kprintf("buff is null in write\n");
 		return -1;
 	}
+	if(curthread->t_fdtable[fd] == NULL){
+		kprintf("curthread->t_fdtable[fd] is null in write\n");
+		return -1;
+	}
+	//if(size == 0){
+	//	kprintf("size is 0 in write\n");
+	//	return -1;
+	//}
 	lock_acquire(curthread->t_fdtable[fd]->fdlock);
-
 	write = kmalloc(sizeof(struct uio));
-
 	//set uio variables
 	write->uio_iov->iov_ubase = buf;
   	write->uio_iov->iov_len = size;
@@ -319,18 +361,22 @@ int write(int fd, void* buf, size_t size){
   	write->uio_space = curthread->t_proc->p_addrspace; //WE THINK?!?!
 
 	//read
-	retval = VOP_WRITE(curthread->t_fdtable[fd]->vn, write);
-	if(retval < 0){
+	ret = VOP_WRITE(curthread->t_fdtable[fd]->vn, write);
+	if(ret < 0){
+		kfree(write);
 		return -1;
 	}
 
 	//update offset and set return to how many bytes read
 	curthread->t_fdtable[fd]->offset = write->uio_offset;
+	*retval = size - write->uio_resid;
+	kfree(write);
 	lock_release(curthread->t_fdtable[fd]->fdlock);
-	return size - write->uio_resid;
+
+	return 0;
 }
 
-int close(int fd){
+int sys_close(int fd){
 	if(curthread->t_fdtable[fd] == NULL){
 		return -1;
 	}
@@ -338,7 +384,6 @@ int close(int fd){
 	//acquire lock
 	lock_acquire(curthread->t_fdtable[fd]->fdlock);
 
-	kprintf("close refcount = %d\n", curthread->t_fdtable[fd]->refcount);
 
 	//decrease reference counter
 	curthread->t_fdtable[fd]->refcount--;
@@ -346,6 +391,8 @@ int close(int fd){
 	//if no more references, close fd
 	if(curthread->t_fdtable[fd]->refcount == 0){
 		vfs_close(curthread->t_fdtable[fd]->vn);
+		kfree(curthread->t_fdtable[fd]->fname);
+		lock_destroy(curthread->t_fdtable[fd]->fdlock);
 		kfree(curthread->t_fdtable[fd]);
 		kprintf("freed fd \n");
 		curthread->t_fdtable[fd] = NULL;
@@ -356,28 +403,114 @@ int close(int fd){
 	return 0;
 }
 
-pid_t getpid(){
-	return curthread->t_proc->p_id;
-}
-
-pid_t fork(){
+pid_t sys_getpid(int32_t* retval){
+	*retval = curthread->t_proc->p_id;
 	return 0;
 }
 
-int execv(const char *prog, char *const *args){
+static void child_setup(void* data1, unsigned long data2){
+	(void) data2;
+	struct childinfo* info = data1;
+
+	kprintf("activate child as\n");
+	as_activate();
+
+	kprintf("set child tf values\n");
+	info->tf->tf_v0 = 0;
+	info->tf->tf_a3 = 0;
+	info->tf->tf_epc += 4;
+
+	kfree(info->tf);
+	kfree(info);
+
+	
+
+	//curthread->tf
+}
+
+pid_t sys_fork(struct trapframe *tf, int32_t* retval){
+	struct trapframe* newtf;
+	struct addrspace* newas;
+	struct proc *proc;
+	struct childinfo* info;
+
+	//if(proc_Locker == NULL){
+	//	lock_create(proc_Locker);
+	//}
+	//lock_acquire(proc_Locker);
+
+	//copy tf
+	kprintf("make tf\n");
+	newtf = (struct trapframe*) kmalloc(sizeof(struct trapframe));
+	if(newtf == NULL) {
+		return -1;
+	}
+	memcpy(tf, newtf, sizeof(struct trapframe));
+
+	//copy as
+	kprintf("make as\n");
+	newas = (struct addrspace*) kmalloc(sizeof(struct addrspace));
+	if(newas == NULL) {
+		return -1;
+	}
+	as_copy(curthread->t_proc->p_addrspace, &newas);
+	
+	//new proc
+	kprintf("make proc\n");
+	proc = kmalloc(sizeof(struct proc));
+	if (proc == NULL) {
+		return -1;
+	}
+	
+	kprintf("set proc name\n");
+	proc->p_name = kstrdup("childproc");
+	if (proc->p_name == NULL) {
+		kfree(proc);
+		return -1;
+	}
+
+	proc->p_numthreads = 0;
+	kprintf("make proc spinlock\n");
+	spinlock_init(&proc->p_lock);
+
+	kprintf("assign proc as\n");
+	proc->p_addrspace = newas;
+	curthread->t_proc->p_cwd = proc->p_cwd;
+	//memcpy(curthread->t_proc->p_cwd, proc->p_cwd, sizeof(struct vnode*));
+
+	kprintf("create info\n");
+	info = (struct childinfo*) kmalloc(sizeof(struct childinfo*));
+	if(info == NULL) {
+		return -1;
+	}
+
+	info->tf = newtf;
+	info->fdtable = curthread->t_fdtable;
+
+	kprintf("fork child\n");
+	*retval = thread_fork("child", proc, child_setup, info, 0);
+
+
+	//lock_release(proc_Locker);
+
+	return 0;
+}
+
+int sys_execv(userptr_t prog, userptr_t args){
 	(void) prog;
 	(void) args;
 	return 0;
 }
 
-pid_t waitpid(pid_t pid, int *returncode, int flags){
+pid_t sys_waitpid(pid_t pid, int *returncode, int flags, int32_t* retval){
 	(void) pid;
 	(void) returncode;
 	(void) flags;
+	(void) retval;
 	return 0;
 }
 
-void _exit(int code){
+void sys__exit(int code){
 	(void) code;
 	while(1);
 }

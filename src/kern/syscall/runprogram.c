@@ -44,6 +44,7 @@
 #include <vfs.h>
 #include <syscall.h>
 #include <test.h>
+#include <proc_array.h>
 
 /*
  * Load program "progname" and start running it in usermode.
@@ -55,9 +56,26 @@ int
 runprogram(char *progname)
 {
 	struct addrspace *as;
-	struct vnode *v;
+	struct vnode* v;
+	struct vnode* vin;
+	struct vnode* vout;
+	struct vnode* verr;
+	struct fdesc* fin;
+	struct fdesc* fout;
+	struct fdesc* ferr;
+	char sin[6] = "STDIN";
+	char sout[6] = "STDOUT";
+	char serr[6] = "STDERR";
+	char in[5] = "con:";
+	char out[5] = "con:";
+	char err[5] = "con:";
 	vaddr_t entrypoint, stackptr;
-	int result;
+	int result, pid;
+
+	if(proc_Lock == NULL){
+		proc_Lock = lock_create("proc_Lock");
+	}
+	lock_acquire(proc_Lock);
 
 	/* Open the file. */
 	result = vfs_open(progname, O_RDONLY, 0, &v);
@@ -87,6 +105,57 @@ runprogram(char *progname)
 		return result;
 	}
 
+	//set up stdin stdout and stderr
+
+	fin = (struct fdesc*) kmalloc(sizeof(struct fdesc));
+	vfs_open(in, O_RDONLY, 0664, &vin);
+	curthread->t_fdtable[0] = fin;
+
+	//set variables in file table
+	curthread->t_fdtable[0]->fname = sin;
+	curthread->t_fdtable[0]->flags = O_RDONLY;
+	curthread->t_fdtable[0]->vn = vin;
+	curthread->t_fdtable[0]->fdlock = lock_create(sin);
+	curthread->t_fdtable[0]->refcount = 1;
+	if(curthread->t_fdtable[0]->vn == NULL){
+		kprintf("vin is null\n");
+	}
+
+	fout = (struct fdesc*) kmalloc(sizeof(struct fdesc));
+	vfs_open(out, O_WRONLY, 0664, &vout);
+	curthread->t_fdtable[1] = fout;
+	if(vout == NULL){
+		//kprintf("vout1 is null\n");
+	}
+
+	//set variables in file table
+	curthread->t_fdtable[1]->fname = sout;
+	curthread->t_fdtable[1]->flags = O_WRONLY;
+	curthread->t_fdtable[1]->vn = vout;
+	curthread->t_fdtable[1]->fdlock = lock_create(sout);
+	curthread->t_fdtable[1]->refcount = 1;
+	if(curthread->t_fdtable[1]->vn == NULL){
+		kprintf("vout is null\n");
+	}
+
+
+	ferr = (struct fdesc*) kmalloc(sizeof(struct fdesc));
+	vfs_open(err, O_WRONLY, 0664, &verr);
+	curthread->t_fdtable[2] = ferr;
+	if(verr == NULL){
+		//kprintf("verr1 is null\n");
+	}
+
+	//set variables in file table
+	curthread->t_fdtable[2]->fname = serr;
+	curthread->t_fdtable[2]->flags = O_WRONLY;
+	curthread->t_fdtable[2]->vn = verr;
+	curthread->t_fdtable[2]->fdlock = lock_create(serr);
+	curthread->t_fdtable[2]->refcount = 1;
+	if(curthread->t_fdtable[2]->vn == NULL){
+		//kprintf("verr is null\n");
+	}
+
 	/* Done with the file now. */
 	vfs_close(v);
 
@@ -97,6 +166,24 @@ runprogram(char *progname)
 		return result;
 	}
 
+
+	memset(proc_Array, 0, (sizeof(struct proc*) * __PID_MAX));
+	//proc_Array[1] = curthread->t_proc;
+	//curthread->t_proc->p_id = 1;
+	//kprintf("something\n");
+	
+	//get and set pid
+	for(pid = 1; pid < __PID_MAX; pid++){
+		if(proc_Array[pid] == NULL) break;
+	}
+	kprintf("runprogram pid to be %d\n", pid);
+
+	curthread->t_proc->p_id = pid;
+	proc_Array[pid] = curthread->t_proc;
+	kprintf("set runprogram pid\n");
+	
+	lock_release(proc_Lock);
+	
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  NULL /*userspace addr of environment*/,

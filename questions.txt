@@ -1,4 +1,5 @@
-How much do we do with the address space? Every method in addrspace.c?
-Do we need to create a new address space for a new thread?
-How do we make sure a pointer is valid (in the user's space)?
+Menu is consuming half of our input. Is it related to the unimplemented fork?
+How do we copy the trapframe on fork?
+How do we go about making a new process? Copy proc_create and change what's needed?
+Where should we be saving global variables, and where to initialize?
 

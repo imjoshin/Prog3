@@ -50,6 +50,8 @@
 #include <addrspace.h>
 #include <mainbus.h>
 #include <vnode.h>
+#include <limits.h>
+#include <proc_array.h>
 
 
 /* Magic number used as a guard value on kernel thread stacks. */
@@ -146,6 +148,7 @@ thread_create(const char *name)
 	thread->t_in_interrupt = false;
 	thread->t_curspl = IPL_HIGH;
 	thread->t_iplhigh_count = 1; /* corresponding to t_curspl */
+	
 
 	/* If you add to struct thread, be sure to initialize here */
 
@@ -496,12 +499,15 @@ thread_fork(const char *name,
 	    void *data1, unsigned long data2)
 {
 	struct thread *newthread;
-	int result;
+	int result, pid;
 
+
+	kprintf("in thread_fork\n");
 	newthread = thread_create(name);
 	if (newthread == NULL) {
 		return ENOMEM;
 	}
+	kprintf("done with thread_create\n");
 
 	/* Allocate a stack */
 	newthread->t_stack = kmalloc(STACK_SIZE);
@@ -510,6 +516,7 @@ thread_fork(const char *name,
 		return ENOMEM;
 	}
 	thread_checkstack_init(newthread);
+	kprintf("init stack\n");
 
 	/*
 	 * Now we clone various fields from the parent thread.
@@ -528,6 +535,19 @@ thread_fork(const char *name,
 		thread_destroy(newthread);
 		return result;
 	}
+	kprintf("proc stuff\n");
+
+
+	//get and set pid
+	for(pid = 1; pid < __PID_MAX; pid++){
+		if(proc_Array[pid] == NULL) break;
+	}
+	kprintf("found pid to be %d\n", pid);
+
+	proc->p_id = pid;
+	proc_Array[pid] = proc;
+	kprintf("set pid\n");
+
 
 	/*
 	 * Because new threads come out holding the cpu runqueue lock
@@ -542,7 +562,7 @@ thread_fork(const char *name,
 	/* Lock the current cpu's run queue and make the new thread runnable */
 	thread_make_runnable(newthread, false);
 
-	return 0;
+	return 0; //pid
 }
 
 /*

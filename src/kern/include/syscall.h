@@ -52,15 +52,15 @@ __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 		       vaddr_t stackptr, vaddr_t entrypoint);
 
 //system call functions for assignment 2
-int open(const char *filename, int flags);
-ssize_t read(int fd, void* buf, size_t size);
-int write(int fd, void* buf, size_t size);
-int close(int fd);
-__DEAD void _exit(int code);
-int execv(const char *prog, char *const *args);
-pid_t fork(void);
-pid_t getpid(void);
-pid_t waitpid(pid_t pid, int *returncode, int flags);
+int sys_open(userptr_t filename, int flags, mode_t mode, int32_t* retval);
+ssize_t sys_read(int fd, void* buf, size_t size, int32_t* retval);
+int sys_write(int fd, void* buf, size_t size, int32_t* retval);
+int sys_close(int fd);
+__DEAD void sys__exit(int code);
+int sys_execv(userptr_t prog, userptr_t args);
+pid_t sys_fork(struct trapframe *tf, int32_t* retval);
+pid_t sys_getpid(int32_t* retval);
+pid_t sys_waitpid(pid_t pid, int *returncode, int flags, int32_t* retval);
 
 /*
  * Prototypes for IN-KERNEL entry points for system call implementations.
