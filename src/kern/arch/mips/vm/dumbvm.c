@@ -243,11 +243,13 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 struct addrspace *
 as_create(void)
 {
+	kprintf("DUMBVM: malloc - size: %d\n", sizeof(struct addrspace));
 	struct addrspace *as = kmalloc(sizeof(struct addrspace));
 	if (as==NULL) {
 		return NULL;
 	}
 
+	kprintf("DUMBVM: set creation variables;\n");
 	as->as_vbase1 = 0;
 	as->as_pbase1 = 0;
 	as->as_npages1 = 0;
@@ -396,17 +398,20 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
 	dumbvm_can_sleep();
 
+	kprintf("DUMBVM: as_create();\n");
 	new = as_create();
 	if (new==NULL) {
 		return ENOMEM;
 	}
 
+	kprintf("DUMBVM: copy vars;\n");
 	new->as_vbase1 = old->as_vbase1;
 	new->as_npages1 = old->as_npages1;
 	new->as_vbase2 = old->as_vbase2;
 	new->as_npages2 = old->as_npages2;
 
 	/* (Mis)use as_prepare_load to allocate some physical memory. */
+	kprintf("DUMBVM: as_prepare_load(new);\n");
 	if (as_prepare_load(new)) {
 		as_destroy(new);
 		return ENOMEM;
@@ -416,14 +421,17 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	KASSERT(new->as_pbase2 != 0);
 	KASSERT(new->as_stackpbase != 0);
 
+	kprintf("DUMBVM: move pbase1;\n");
 	memmove((void *)PADDR_TO_KVADDR(new->as_pbase1),
 		(const void *)PADDR_TO_KVADDR(old->as_pbase1),
 		old->as_npages1*PAGE_SIZE);
 
+	kprintf("DUMBVM: move pbase2;\n");
 	memmove((void *)PADDR_TO_KVADDR(new->as_pbase2),
 		(const void *)PADDR_TO_KVADDR(old->as_pbase2),
 		old->as_npages2*PAGE_SIZE);
 
+	kprintf("DUMBVM: move stackpbase;\n");
 	memmove((void *)PADDR_TO_KVADDR(new->as_stackpbase),
 		(const void *)PADDR_TO_KVADDR(old->as_stackpbase),
 		DUMBVM_STACKPAGES*PAGE_SIZE);

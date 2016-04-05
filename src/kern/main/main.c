@@ -49,6 +49,8 @@
 #include <syscall.h>
 #include <test.h>
 #include <version.h>
+#include <proc_array.h>
+#include <kern/fcntl.h>
 #include "autoconf.h"  // for pseudoconfig
 
 
@@ -96,6 +98,10 @@ boot(void)
 	 * dev/generic/console.c).
 	 */
 
+
+	//Initialize global variables
+	memset(proc_Array, 0, (sizeof(struct proc*) * __PID_MAX));
+
 	kprintf("\n");
 	kprintf("OS/161 base system version %s\n", BASE_VERSION);
 	kprintf("%s", harvard_copyright);
@@ -138,6 +144,7 @@ boot(void)
 	 */
 	COMPILE_ASSERT(sizeof(userptr_t) == sizeof(char *));
 	COMPILE_ASSERT(sizeof(*(userptr_t)0) == sizeof(char));
+
 }
 
 /*

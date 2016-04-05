@@ -1,5 +1,3 @@
-Menu is consuming half of our input. Is it related to the unimplemented fork?
-How do we copy the trapframe on fork?
-How do we go about making a new process? Copy proc_create and change what's needed?
-Where should we be saving global variables, and where to initialize?
+Receiving an assertion failure for fla - prpage < PAGE_SIZE when allocating write object.
+Same issue for proc. Solved by making proc struct bigger.
 

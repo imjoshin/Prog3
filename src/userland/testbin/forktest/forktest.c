@@ -60,6 +60,7 @@ dofork(void)
 	if (pid < 0) {
 		warn("fork");
 	}
+	printf("done forking :)");
 	return pid;
 }
 

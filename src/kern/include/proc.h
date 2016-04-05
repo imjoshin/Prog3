@@ -72,7 +72,7 @@ struct proc {
 
 	/* VFS */
 	struct vnode *p_cwd;		/* current working directory */
-
+	int x[100];
 	/* add more material here as needed */
 };
 

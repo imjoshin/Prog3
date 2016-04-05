@@ -20,14 +20,15 @@
 
 
 int io1(){
-	char buf[100];
+	//char buf[100];
 	printf("type something: ");	
-	read(0, buf, 100);
-	write(1, "\nread ", 6);
-	write(1, buf, 100);
-	write(1, " from stdin\n", 13);
-	printf("write to stdout Test passed!\n");
-	write(2, "write to stderr Test passed!\n", 30);
+	printf("type something2: ");	
+	//read(0, buf, 100);
+	//write(1, "\nread ", 6);
+	//write(1, buf, 100);
+	//write(1, " from stdin\n", 13);
+	//printf("write to stdout Test passed!\n");
+	write(1, "write to stderr Test passed!\n", 30);
 	return 0;
 }
 
@@ -65,6 +66,11 @@ int io3() {
 int io4() {
 	
 	return 0;
+}
+
+int execv1() {
+	execv("newProgram", 1, 2);
+	printf("THIS SHOULD'T PRINT");
 }
 /*
 //Files can be opened and closed. Lowest descriptor is returned.
@@ -120,6 +126,11 @@ int io2(){
 
 
 int main(int nargs , char ** args){
+	io1();
+	(void)nargs;
+	(void) args;
+	
+/*
 	(void) nargs;
 	(void) args;
 	int i;
@@ -133,7 +144,8 @@ int main(int nargs , char ** args){
 
 	for(i = 3; i < 4; i++) {
 		err += iotests[i]();
-	}	
+	}
+*/	
 /*
   int err = 0;
 	int ret;

@@ -115,6 +115,7 @@ syscall(struct trapframe *tf)
 	 */
 
 	retval = 0;
+	kprintf("START OF SYSCALL: %d\n", callno);
 
 	switch (callno) {
 	    case SYS_reboot:
@@ -186,6 +187,7 @@ syscall(struct trapframe *tf)
 	 */
 
 	tf->tf_epc += 4;
+	kprintf("END OF SYSCALL\n");
 
 	/* Make sure the syscall code didn't forget to lower spl */
 	KASSERT(curthread->t_curspl == 0);
@@ -193,17 +195,9 @@ syscall(struct trapframe *tf)
 	KASSERT(curthread->t_iplhigh_count == 0);
 }
 
-/*
- * Enter user mode for a newly forked process.
- *
- * This function is provided as a reminder. You need to write
- * both it and the code that calls it.
- *
- * Thus, you can trash it and do things another way if you prefer.
- */
-void enter_forked_process(struct trapframe *tf){
-	(void)tf;
-}
+
+
+
 
 int sys_open(userptr_t filename, int flags, mode_t mode, int32_t* retval){
 	int fd, ret, flagmask;
@@ -335,6 +329,7 @@ int sys_write(int fd, void* buf, size_t size, int32_t* retval){
 	int ret;
 	struct uio* write;
 
+	kprintf("SYS_WRITE: in sys_write\n");
 
 	//check valid arguments
 	if(buf == NULL){
@@ -349,9 +344,12 @@ int sys_write(int fd, void* buf, size_t size, int32_t* retval){
 	//	kprintf("size is 0 in write\n");
 	//	return -1;
 	//}
+	kprintf("SYS_WRITE: get lock\n");
 	lock_acquire(curthread->t_fdtable[fd]->fdlock);
+	kprintf("SYS_WRITE: kmalloc for write\n");
 	write = kmalloc(sizeof(struct uio));
 	//set uio variables
+	kprintf("SYS_WRITE: set write variables\n");
 	write->uio_iov->iov_ubase = buf;
   	write->uio_iov->iov_len = size;
   	write->uio_offset = curthread->t_fdtable[fd]->offset;
@@ -403,11 +401,223 @@ int sys_close(int fd){
 	return 0;
 }
 
+
+/*
+ * Enter user mode for a newly forked process.
+ *
+ * This function is provided as a reminder. You need to write
+ * both it and the code that calls it.
+ *
+ * Thus, you can trash it and do things another way if you prefer.
+ */
+void enter_forked_process(void* cinfo, unsigned long x){
+	(void) x;
+	struct childinfo* info;
+
+	
+
+	kprintf("entered enter_forked_process\n");
+	info = (struct childinfo*) cinfo;
+
+	kprintf("set child tf values\n");
+	info->tf->tf_v0 = 0;
+	info->tf->tf_a3 = 0;
+	info->tf->tf_epc += 4;
+
+	kprintf("copy fdtable\n");
+	memcpy(curthread->t_fdtable, info->fdtable, sizeof(struct fdesc*));
+
+	
+
+	kprintf("call mips_usermode\n");
+	mips_usermode(info->tf);
+}
+
+
+pid_t sys_fork(struct trapframe *tf, int32_t* retval){
+	(void) tf;
+	(void) retval;
+	return 0;
+/*
+	struct childinfo* info;
+	struct trapframe* newtf;
+	struct addrspace* newas;
+	struct proc* newproc;
+	kprintf("start sys_fork: %d\n", sizeof(struct proc));
+	newproc = (struct proc*) kmalloc(sizeof(struct proc));
+	memcpy(newproc, curthread->t_proc, sizeof(struct proc));
+
+	kprintf("num threads: %d\n", newproc->p_numthreads);
+
+	//make copy of tf
+	kprintf("make newtf\n");
+	newtf = (struct trapframe*) kmalloc(sizeof(struct trapframe));
+	kprintf("memcpy newtf\n");
+	memcpy(newtf, tf, sizeof(struct trapframe));
+
+	//make copy of as
+	kprintf("call as_copy\n");
+	as_copy(curthread->t_proc->p_addrspace, &newas);
+	kprintf("end as_copy\n");
+
+	//make new process
+	kprintf("make newproc\n");
+	//newproc = (struct proc*) kmalloc(sizeof(struct proc));
+	kprintf("memcpy newproc\n");
+	memcpy(newproc, curthread->t_proc, sizeof(struct proc));
+
+	info = (struct childinfo*) kmalloc(sizeof(struct childinfo));
+	info->tf = newtf;
+	info->fdtable = curthread->t_fdtable;
+
+	kprintf("call thread_fork\n");
+	thread_fork("childproc", newproc, enter_forked_process, tf, 0);
+	(void) retval;
+
+	return 0;
+*/
+}
+
 pid_t sys_getpid(int32_t* retval){
 	*retval = curthread->t_proc->p_id;
 	return 0;
 }
 
+int sys_execv(userptr_t prog, userptr_t args){
+	
+	char* progname;
+	char** progargs;
+	size_t size;
+	int ret, i, len, argc;
+
+	struct addrspace *as;
+	struct vnode *v;
+	vaddr_t entrypoint, stackptr;
+
+	
+	//set program name
+	progname = (char*) kmalloc(sizeof(char) * PATH_MAX);
+	ret = copyinstr((const_userptr_t) prog, progname, PATH_MAX, &size);
+	if(ret){
+		kfree(progname);
+		return EFAULT;
+	}
+	if(size == 1){
+		kfree(progname);
+		return EINVAL;
+	}
+
+	//set program arguments
+	progargs = (char**) kmalloc(sizeof(char**));
+	ret = copyin((const_userptr_t) args, progargs, sizeof(char**));
+	if(ret){
+		kfree(progname);
+		kfree(progargs);
+		return EFAULT;
+	}
+
+	progargs[0] = (char*) kmalloc(sizeof(char) * PATH_MAX);
+	ret = copyinstr((const_userptr_t) &(args[0]), progargs[0], PATH_MAX, &size);
+	if(ret){
+		kfree(progname);
+		kfree(progargs);
+		return EFAULT;
+	}
+	argc = 0;
+	while(progargs[argc] != NULL){
+		argc++;
+		progargs[argc] = (char*) kmalloc(sizeof(char) * PATH_MAX);
+		ret = copyinstr((const_userptr_t) &(args[argc]), progargs[argc], PATH_MAX, &size);
+		if(ret){
+			kfree(progname);
+			kfree(progargs);
+			return EFAULT;
+		}
+	}
+
+
+	/* Open the file. */
+	ret = vfs_open(progname, O_RDONLY, 0, &v);
+	if (ret) {
+		return ret;
+	}
+
+	/* We should be a new process. */
+	KASSERT(proc_getas() == NULL);
+
+	/* Create a new address space. */
+	as = as_create();
+	if (as == NULL) {
+		vfs_close(v);
+		return ENOMEM;
+	}
+
+	/* Switch to it and activate it. */
+	proc_setas(as);
+	as_activate();
+
+	/* Load the executable. */
+	ret = load_elf(v, &entrypoint);
+	if (ret) {
+		/* p_addrspace will go away when curproc is destroyed */
+		vfs_close(v);
+		return ret;
+	}
+
+	/* Done with the file now. */
+	vfs_close(v);
+
+	/* Define the user stack in the address space */
+	ret = as_define_stack(as, &stackptr);
+	if (ret) {
+		/* p_addrspace will go away when curproc is destroyed */
+		return ret;
+	}
+
+	for(i = 0; i < argc; i++){
+		len = strlen(progargs[i]) + 1;
+		if(len % 4 != 0) {
+			len += len % 4;
+		}
+		copyoutstr(progargs[i], (userptr_t)&stackptr, len, (unsigned int*) &ret);
+		stackptr -= len;
+	}
+
+	/* Warp to user mode. */
+	enter_new_process(argc, (userptr_t) &stackptr,
+			  NULL /*userspace addr of environment*/,
+			  stackptr, entrypoint);
+
+	/* enter_new_process does not return. */
+	panic("enter_new_process returned\n");
+	return EINVAL;
+
+
+
+
+
+
+
+
+
+
+	return 0;
+}
+
+pid_t sys_waitpid(pid_t pid, int *returncode, int flags, int32_t* retval){
+	(void) pid;
+	(void) returncode;
+	(void) flags;
+	(void) retval;
+	return 0;
+}
+
+void sys__exit(int code){
+	(void) code;
+	while(1);
+}
+
+/*
 static void child_setup(void* data1, unsigned long data2){
 	(void) data2;
 	struct childinfo* info = data1;
@@ -449,11 +659,19 @@ pid_t sys_fork(struct trapframe *tf, int32_t* retval){
 
 	//copy as
 	kprintf("make as\n");
-	newas = (struct addrspace*) kmalloc(sizeof(struct addrspace));
-	if(newas == NULL) {
-		return -1;
+	//newas = (struct addrspace*) kmalloc(sizeof(struct addrspace));
+	//newas = as_create();
+	//if(newas == NULL) {
+	//	return -1;
+	//}
+	kprintf("before as copy\n");
+	if(curthread->t_proc->p_addrspace == NULL){
+		kprintf("as is NULL\n");
 	}
+	//---------------------------------------------------
 	as_copy(curthread->t_proc->p_addrspace, &newas);
+	//memcpy(&newas, curthread->t_proc->p_addrspace, sizeof(struct addrspace));
+	kprintf("after as copy\n");
 	
 	//new proc
 	kprintf("make proc\n");
@@ -495,22 +713,4 @@ pid_t sys_fork(struct trapframe *tf, int32_t* retval){
 
 	return 0;
 }
-
-int sys_execv(userptr_t prog, userptr_t args){
-	(void) prog;
-	(void) args;
-	return 0;
-}
-
-pid_t sys_waitpid(pid_t pid, int *returncode, int flags, int32_t* retval){
-	(void) pid;
-	(void) returncode;
-	(void) flags;
-	(void) retval;
-	return 0;
-}
-
-void sys__exit(int code){
-	(void) code;
-	while(1);
-}
+*/

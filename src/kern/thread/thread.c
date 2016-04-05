@@ -555,12 +555,15 @@ thread_fork(const char *name,
 	 * for the spllower() that will be done releasing it.
 	 */
 	newthread->t_iplhigh_count++;
+	kprintf("inc iplhigh_count\n");
 
 	/* Set up the switchframe so entrypoint() gets called */
 	switchframe_init(newthread, entrypoint, data1, data2);
+	kprintf("switchframe\n");
 
 	/* Lock the current cpu's run queue and make the new thread runnable */
 	thread_make_runnable(newthread, false);
+	kprintf("make runnable\n");
 
 	return 0; //pid
 }

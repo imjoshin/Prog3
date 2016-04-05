@@ -111,6 +111,9 @@ runprogram(char *progname)
 	vfs_open(in, O_RDONLY, 0664, &vin);
 	curthread->t_fdtable[0] = fin;
 
+	kprintf("SET STDIN/OUT/ERR FOR NEW PROCESS\n");
+
+
 	//set variables in file table
 	curthread->t_fdtable[0]->fname = sin;
 	curthread->t_fdtable[0]->flags = O_RDONLY;
@@ -167,7 +170,6 @@ runprogram(char *progname)
 	}
 
 
-	memset(proc_Array, 0, (sizeof(struct proc*) * __PID_MAX));
 	//proc_Array[1] = curthread->t_proc;
 	//curthread->t_proc->p_id = 1;
 	//kprintf("something\n");

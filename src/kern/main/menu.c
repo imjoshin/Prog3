@@ -114,6 +114,7 @@ common_prog(int nargs, char **args)
 {
 	struct proc *proc;
 	int result;
+	int32_t retval;
 
 	/* Create a process for the new program to run in. */
 	proc = proc_create_runprogram(args[0] /* name */);
@@ -129,13 +130,17 @@ common_prog(int nargs, char **args)
 		kprintf("thread_fork failed: %s\n", strerror(result));
 		proc_destroy(proc);
 		return result;
+	} else {
+
+		/*
+		 * The new process will be destroyed when the program exits...
+		 * once you write the code for handling that.
+		 */
+
+		//wait for the child to end before returning to the menu
+		sys_waitpid(proc->p_id, &result, 0, &retval);
 	}
-
-	/*
-	 * The new process will be destroyed when the program exits...
-	 * once you write the code for handling that.
-	 */
-
+	
 	return 0;
 }
 
