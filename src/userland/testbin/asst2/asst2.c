@@ -71,6 +71,7 @@ int io4() {
 int forktest() {
 	int i;
 	fork();
+	write(1, "Starting\n", 10);
 	i = fork();
 	printf("fork returned: %d\n", i);
 	printf("my pid is: %d\n", getpid());

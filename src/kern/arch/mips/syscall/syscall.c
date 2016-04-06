@@ -327,9 +327,9 @@ ssize_t sys_read(int fd, void* buf, size_t size, int32_t* retval){
 }
 
 int sys_write(int fd, void* buf, size_t size, int32_t* retval){
+
 	int ret;
 	struct uio* write;
-
 	//if(DEBUGP) kprintf("SYS_WRITE: in sys_write\n");
 
 	//check valid arguments
@@ -346,12 +346,17 @@ int sys_write(int fd, void* buf, size_t size, int32_t* retval){
 	//	return -1;
 	//}
 	//if(DEBUGP) kprintf("SYS_WRITE: get lock\n");
+
 	lock_acquire(curthread->t_fdtable[fd]->fdlock);
 	//if(DEBUGP) kprintf("SYS_WRITE: kmalloc for write\n");
 	write = kmalloc(sizeof(struct uio));
 	//set uio variables
 	//if(DEBUGP) kprintf("SYS_WRITE: set write variables\n");
-	write->uio_iov->iov_ubase = buf;
+
+
+	write->uio_iov = kmalloc(sizeof(struct iovec));
+
+	write->uio_iov->iov_ubase = (void*) buf;
   	write->uio_iov->iov_len = size;
   	write->uio_offset = curthread->t_fdtable[fd]->offset;
   	write->uio_resid = size;
@@ -362,6 +367,7 @@ int sys_write(int fd, void* buf, size_t size, int32_t* retval){
 	//read
 	ret = VOP_WRITE(curthread->t_fdtable[fd]->vn, write);
 	if(ret < 0){
+		kfree(write->uio_iov);
 		kfree(write);
 		return -1;
 	}
@@ -369,6 +375,7 @@ int sys_write(int fd, void* buf, size_t size, int32_t* retval){
 	//update offset and set return to how many bytes read
 	curthread->t_fdtable[fd]->offset = write->uio_offset;
 	*retval = size - write->uio_resid;
+	kfree(write->uio_iov);
 	kfree(write);
 	lock_release(curthread->t_fdtable[fd]->fdlock);
 
