@@ -17,4 +17,7 @@ int io2(void);
 int io3(void);
 int io4(void);
 
+int forktest(void);
+
+
 #endif /* _TEST_H_ */

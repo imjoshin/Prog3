@@ -499,15 +499,15 @@ thread_fork(const char *name,
 	    void *data1, unsigned long data2)
 {
 	struct thread *newthread;
-	int result, pid;
+	int result;//, pid;
 
 
-	kprintf("in thread_fork\n");
+	//kprintf("in thread_fork\n");
 	newthread = thread_create(name);
 	if (newthread == NULL) {
 		return ENOMEM;
 	}
-	kprintf("done with thread_create\n");
+	//kprintf("done with thread_create\n");
 
 	/* Allocate a stack */
 	newthread->t_stack = kmalloc(STACK_SIZE);
@@ -516,7 +516,7 @@ thread_fork(const char *name,
 		return ENOMEM;
 	}
 	thread_checkstack_init(newthread);
-	kprintf("init stack\n");
+	//kprintf("init stack\n");
 
 	/*
 	 * Now we clone various fields from the parent thread.
@@ -535,19 +535,19 @@ thread_fork(const char *name,
 		thread_destroy(newthread);
 		return result;
 	}
-	kprintf("proc stuff\n");
+	//kprintf("proc stuff\n");
 
-
+/*
 	//get and set pid
 	for(pid = 1; pid < __PID_MAX; pid++){
 		if(proc_Array[pid] == NULL) break;
 	}
-	kprintf("found pid to be %d\n", pid);
+	//kprintf("found pid to be %d\n", pid);
 
 	proc->p_id = pid;
 	proc_Array[pid] = proc;
-	kprintf("set pid\n");
-
+	//kprintf("set pid\n");
+*/
 
 	/*
 	 * Because new threads come out holding the cpu runqueue lock
@@ -555,15 +555,15 @@ thread_fork(const char *name,
 	 * for the spllower() that will be done releasing it.
 	 */
 	newthread->t_iplhigh_count++;
-	kprintf("inc iplhigh_count\n");
+	//kprintf("inc iplhigh_count\n");
 
 	/* Set up the switchframe so entrypoint() gets called */
 	switchframe_init(newthread, entrypoint, data1, data2);
-	kprintf("switchframe\n");
+	//kprintf("switchframe\n");
 
 	/* Lock the current cpu's run queue and make the new thread runnable */
 	thread_make_runnable(newthread, false);
-	kprintf("make runnable\n");
+	//kprintf("make runnable\n");
 
 	return 0; //pid
 }

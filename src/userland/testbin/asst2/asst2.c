@@ -68,9 +68,14 @@ int io4() {
 	return 0;
 }
 
-int execv1() {
-	execv("newProgram", 1, 2);
-	printf("THIS SHOULD'T PRINT");
+int forktest() {
+	int i;
+	fork();
+	i = fork();
+	printf("fork returned: %d\n", i);
+	printf("my pid is: %d\n", getpid());
+
+	return 0;
 }
 /*
 //Files can be opened and closed. Lowest descriptor is returned.
@@ -126,7 +131,7 @@ int io2(){
 
 
 int main(int nargs , char ** args){
-	io1();
+	forktest();
 	(void)nargs;
 	(void) args;
 	

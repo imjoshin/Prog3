@@ -70,7 +70,7 @@ runprogram(char *progname)
 	char out[5] = "con:";
 	char err[5] = "con:";
 	vaddr_t entrypoint, stackptr;
-	int result, pid;
+	int result;
 
 	if(proc_Lock == NULL){
 		proc_Lock = lock_create("proc_Lock");
@@ -173,7 +173,7 @@ runprogram(char *progname)
 	//proc_Array[1] = curthread->t_proc;
 	//curthread->t_proc->p_id = 1;
 	//kprintf("something\n");
-	
+	/*
 	//get and set pid
 	for(pid = 1; pid < __PID_MAX; pid++){
 		if(proc_Array[pid] == NULL) break;
@@ -183,7 +183,7 @@ runprogram(char *progname)
 	curthread->t_proc->p_id = pid;
 	proc_Array[pid] = curthread->t_proc;
 	kprintf("set runprogram pid\n");
-	
+	*/
 	lock_release(proc_Lock);
 	
 	/* Warp to user mode. */
