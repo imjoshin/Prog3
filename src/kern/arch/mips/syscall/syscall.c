@@ -41,6 +41,7 @@
 #include <vfs.h>
 #include <stat.h>
 #include <proc.h>
+#include <synch.h>
 #include <proc_array.h>
 #include <addrspace.h>
 #include <../arch/mips/include/trapframe.h>
@@ -490,6 +491,7 @@ pid_t sys_fork(struct trapframe *tf, int32_t* retval){
 	newproc->p_numthreads = 1;
 	newproc->p_addrspace = newas;
 	newproc->p_cwd = curthread->t_proc->p_cwd;
+	newproc->p_waitsem = sem_create('\0', 0);
 	//spinlock_init(&newproc->p_lock);
 
 	proc_Array[i] = newproc;
@@ -638,16 +640,26 @@ int sys_execv(userptr_t prog, userptr_t args){
 }
 
 pid_t sys_waitpid(pid_t pid, int *returncode, int flags, int32_t* retval){
-	(void) pid;
-	(void) returncode;
 	(void) flags;
-	(void) retval;
+
+	if(proc_Array[pid] == NULL){
+		return -1;
+	}
+
+	V(proc_Array[pid]->p_waitsem);
+
+	*retval = pid;
+	*returncode = proc_Array[pid]->p_exitcode;
+	
 	return 0;
 }
 
 void sys__exit(int code){
 	//kprintf("EXITING\n");
-	(void) code;
+
+	curthread->t_proc->p_exitcode = code;
+	P(curthread->t_proc->p_waitsem);
+
 	while(1);
 }
 

@@ -78,6 +78,26 @@ int forktest() {
 
 	return 0;
 }
+
+int waittest() {
+	int i, pid;
+	i = 0;
+	pid = fork();
+	printf("fork returned %d\n", pid);
+	if(pid == 0){
+		//child 
+		printf("CHILD: start counting\n");
+		while(i < 10000000) i++;
+		printf("CHILD: done counting\n");
+		//exit(1);
+	}else{
+		//parent
+		printf("PARENT: waiting on pid %d\n", pid);
+		//waitpid(pid, &i, 0);
+		//printf("PARENT: done waiting - returned %d\n", i);
+	}
+	return 0;
+}
 /*
 //Files can be opened and closed. Lowest descriptor is returned.
 int io1(){
@@ -132,7 +152,7 @@ int io2(){
 
 
 int main(int nargs , char ** args){
-	forktest();
+	waittest();
 	(void)nargs;
 	(void) args;
 	

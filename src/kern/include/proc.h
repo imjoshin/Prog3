@@ -64,6 +64,9 @@ struct vnode;
 struct proc {
 	char *p_name;			/* Name of this process */
 	pid_t p_id;
+	struct semaphore* p_waitsem;
+	int p_exitcode;
+
 	struct spinlock p_lock;		/* Lock for this structure */
 	unsigned p_numthreads;		/* Number of threads in this process */
 

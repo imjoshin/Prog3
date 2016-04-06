@@ -18,6 +18,6 @@ int io3(void);
 int io4(void);
 
 int forktest(void);
-
+int waittest(void);
 
 #endif /* _TEST_H_ */
