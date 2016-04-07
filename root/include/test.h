@@ -19,5 +19,6 @@ int io4(void);
 
 int forktest(void);
 int waittest(void);
+int execvtest(void);
 
 #endif /* _TEST_H_ */

@@ -81,9 +81,11 @@ int forktest() {
 
 int waittest() {
 	int i, pid;
-	i = 0;
+	//i = 0;
+	(void) i;
 	pid = fork();
 	printf("fork returned %d\n", pid);
+/*
 	if(pid == 0){
 		//child 
 		printf("CHILD: start counting\n");
@@ -96,6 +98,13 @@ int waittest() {
 		//waitpid(pid, &i, 0);
 		//printf("PARENT: done waiting - returned %d\n", i);
 	}
+*/
+	return 0;
+}
+
+int execvtest() {
+	char * const* array = {"testName", "1", "2", "3", "4", NULL};
+	execv("testName", array);
 	return 0;
 }
 /*
@@ -152,7 +161,7 @@ int io2(){
 
 
 int main(int nargs , char ** args){
-	waittest();
+	execvtest();
 	(void)nargs;
 	(void) args;
 	

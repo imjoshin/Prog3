@@ -151,7 +151,7 @@ syscall(struct trapframe *tf)
 			err = sys_fork(tf, &retval);
 			break;
 	    case SYS_execv:
-			err = sys_execv((userptr_t)tf->tf_a0, (userptr_t)tf->tf_a1);
+			err = sys_execv((userptr_t)tf->tf_a0, (char**)tf->tf_a1);
 			break;
 	    case SYS_waitpid:
 			err = sys_waitpid(tf->tf_a0, (int*) &tf->tf_a1, (int) tf->tf_a2, &retval);
@@ -518,18 +518,20 @@ pid_t sys_getpid(int32_t* retval){
 	return 0;
 }
 
-int sys_execv(userptr_t prog, userptr_t args){
-	
+
+int sys_execv(userptr_t prog, char** args){
 	char* progname;
 	char** progargs;
 	size_t size;
-	int ret, i, len, argc;
-
-	struct addrspace *as;
+	int ret, argc, i;
 	struct vnode *v;
-	vaddr_t entrypoint, stackptr;
+	vaddr_t startptr, stackptr;
+	userptr_t* argptr;
 
-	
+	//struct addrspace *as;
+	//struct vnode *v;
+	//vaddr_t entrypoint, stackptr;
+
 	//set program name
 	progname = (char*) kmalloc(sizeof(char) * PATH_MAX);
 	ret = copyinstr((const_userptr_t) prog, progname, PATH_MAX, &size);
@@ -542,106 +544,72 @@ int sys_execv(userptr_t prog, userptr_t args){
 		return EINVAL;
 	}
 
-	//set program arguments
-	progargs = (char**) kmalloc(sizeof(char**));
-	ret = copyin((const_userptr_t) args, progargs, sizeof(char**));
+	if(DEBUGP) kprintf("EXECV: name = %s\n", progname);
+
+	for(argc = 0; (void*) args[argc] != NULL; argc++);
+
+	progargs = (char**) kmalloc(sizeof(char*) * argc);
+	for(i = 0; i < argc; i++){
+		progargs[i] = (char*) kmalloc(sizeof(char) * strlen(args[i]) + 1);
+		ret = copyinstr((const_userptr_t) args[i], progargs[i], sizeof(char) * strlen(args[i]) + 1, &size);
+		
+		if(DEBUGP) kprintf("EXECV: read args[%d] = %s\n", i, progargs[i]);
+		//TODO error check
+	}	
+
+	if(curthread->t_proc->p_addrspace != NULL){
+		if(DEBUGP) kprintf("EXECV: destroy as\n");
+		as_destroy(curthread->t_proc->p_addrspace);
+	}
+
+	if(DEBUGP) kprintf("EXECV: vfs_open\n");
+	ret = vfs_open((char*) progname, O_RDONLY, 0, &v);
 	if(ret){
-		kfree(progname);
-		kfree(progargs);
-		return EFAULT;
+		return -1;
 	}
 
-	progargs[0] = (char*) kmalloc(sizeof(char) * PATH_MAX);
-	ret = copyinstr((const_userptr_t) &(args[0]), progargs[0], PATH_MAX, &size);
-	if(ret){
-		kfree(progname);
-		kfree(progargs);
-		return EFAULT;
-	}
-	argc = 0;
-	while(progargs[argc] != NULL){
-		argc++;
-		progargs[argc] = (char*) kmalloc(sizeof(char) * PATH_MAX);
-		ret = copyinstr((const_userptr_t) &(args[argc]), progargs[argc], PATH_MAX, &size);
-		if(ret){
-			kfree(progname);
-			kfree(progargs);
-			return EFAULT;
-		}
-	}
-
-
-	/* Open the file. */
-	ret = vfs_open(progname, O_RDONLY, 0, &v);
-	if (ret) {
-		return ret;
-	}
-
-	/* We should be a new process. */
-	KASSERT(proc_getas() == NULL);
-
-	/* Create a new address space. */
-	as = as_create();
-	if (as == NULL) {
-		vfs_close(v);
-		return ENOMEM;
-	}
-
-	/* Switch to it and activate it. */
-	proc_setas(as);
+	//create and activate new as
+	if(DEBUGP) kprintf("EXECV: create as\n");
+	curthread->t_proc->p_addrspace = as_create();
+	if(DEBUGP) kprintf("EXECV: activate as\n");
 	as_activate();
+	
+	if(DEBUGP) kprintf("EXECV: load_elf\n");
+	ret = load_elf(v, &startptr);
+	
 
-	/* Load the executable. */
-	ret = load_elf(v, &entrypoint);
-	if (ret) {
-		/* p_addrspace will go away when curproc is destroyed */
-		vfs_close(v);
-		return ret;
-	}
-
-	/* Done with the file now. */
 	vfs_close(v);
+	ret = as_define_stack(curthread->t_proc->p_addrspace, &stackptr);
 
-	/* Define the user stack in the address space */
-	ret = as_define_stack(as, &stackptr);
-	if (ret) {
-		/* p_addrspace will go away when curproc is destroyed */
-		return ret;
-	}
+
+	if(DEBUGP) kprintf("EXECV: move stackptr\n");
+	stackptr -= sizeof(char*) * (argc + 1);
+	argptr = (userptr_t*) stackptr;
+	copyout(progargs, (userptr_t) argptr, sizeof(char*) * (argc + 1));
 
 	for(i = 0; i < argc; i++){
-		len = strlen(progargs[i]) + 1;
-		if(len % 4 != 0) {
-			len += len % 4;
-		}
-		copyoutstr(progargs[i], (userptr_t)&stackptr, len, (unsigned int*) &ret);
-		stackptr -= len;
+		if(DEBUGP) kprintf("EXECV: set argptr[%d]\n", i);
+		stackptr -= sizeof(char) * (strlen(progargs[i]) + 1);
+		argptr[i] = (userptr_t) stackptr;
+		copyout(progargs[i], (userptr_t) argptr[i], sizeof(char) * (strlen(progargs[i]) + 1));
 	}
 
-	/* Warp to user mode. */
-	enter_new_process(argc, (userptr_t) &stackptr,
-			  NULL /*userspace addr of environment*/,
-			  stackptr, entrypoint);
+	argptr[argc] = 0;
+	stackptr -= stackptr % 8;
 
-	/* enter_new_process does not return. */
-	panic("enter_new_process returned\n");
-	return EINVAL;
+	if(DEBUGP) kprintf("EXECV: enter new process\n");
+	enter_new_process(argc, (userptr_t) argptr, NULL, stackptr, startptr);
 
-
-
-
-
-
-
-
-
-
+	(void) progargs;
 	return 0;
 }
 
 pid_t sys_waitpid(pid_t pid, int *returncode, int flags, int32_t* retval){
 	(void) flags;
-
+	(void) pid;
+	(void) returncode;
+	(void) retval;
+	/*
 	if(proc_Array[pid] == NULL){
 		return -1;
 	}
@@ -650,15 +618,18 @@ pid_t sys_waitpid(pid_t pid, int *returncode, int flags, int32_t* retval){
 
 	*retval = pid;
 	*returncode = proc_Array[pid]->p_exitcode;
-	
+	*/
 	return 0;
 }
 
 void sys__exit(int code){
+	(void) code;
 	//kprintf("EXITING\n");
 
-	curthread->t_proc->p_exitcode = code;
-	P(curthread->t_proc->p_waitsem);
+	//curthread->t_proc->p_exitcode = code;
+	//P(curthread->t_proc->p_waitsem);
+
+	thread_exit();
 
 	while(1);
 }

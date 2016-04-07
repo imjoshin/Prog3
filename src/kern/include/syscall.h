@@ -57,7 +57,7 @@ ssize_t sys_read(int fd, void* buf, size_t size, int32_t* retval);
 int sys_write(int fd, void* buf, size_t size, int32_t* retval);
 int sys_close(int fd);
 __DEAD void sys__exit(int code);
-int sys_execv(userptr_t prog, userptr_t args);
+int sys_execv(userptr_t prog, char** args);
 pid_t sys_fork(struct trapframe *tf, int32_t* retval);
 pid_t sys_getpid(int32_t* retval);
 pid_t sys_waitpid(pid_t pid, int *returncode, int flags, int32_t* retval);
