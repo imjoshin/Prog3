@@ -1,0 +1,1552 @@
+Only in src: 1
+Only in src: build
+Only in src/kern/arch/mips/include: proc_array.h
+Only in src/kern/arch/mips/syscall: proc_array.h
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/arch/mips/syscall/syscall.c src/kern/arch/mips/syscall/syscall.c
+28a29
+> #define DEBUGP 0
+37a39,48
+> #include <kern/fcntl.h>
+> #include <copyinout.h>
+> #include <vfs.h>
+> #include <stat.h>
+> #include <proc.h>
+> #include <synch.h>
+> #include <proc_array.h>
+> #include <addrspace.h>
+> #include <../arch/mips/include/trapframe.h>
+> #include <limits.h>
+77a89,96
+> 
+> 
+> //used for new child process
+> struct childinfo {
+> 	struct trapframe* tf;
+> 	struct fdesc** fdtable;
+> };
+> 
+83c102
+< 	int err;
+---
+> 	int err = 0;
+99a119,120
+> 	//kprintf("SYSTEMCALL: %d\n", callno);
+> 
+100a122
+> 	//if(DEBUGP) kprintf("START OF SYSCALL: %d\n", callno);
+112c134,163
+< 	    /* Add stuff here */
+---
+> 	    case SYS_open:
+> 			err = sys_open((userptr_t)tf->tf_a0, tf->tf_a1, tf->tf_a2, &retval);
+> 			
+> 			break;
+> 	    case SYS_read:
+> 			err = sys_read(tf->tf_a0, (userptr_t)tf->tf_a1, tf->tf_a2, &retval);
+> 			break;
+> 	    case SYS_write:
+> 			//if(DEBUGP) kprintf("\n\n%d %d %d %d\n\n", tf->tf_a0, tf->tf_a1, tf->tf_a2, tf->tf_a3);
+> 			err = sys_write(tf->tf_a0, (userptr_t)tf->tf_a1, tf->tf_a2, &retval);
+> 			break;
+> 	    case SYS_close:
+> 			err = sys_close(tf->tf_a0);
+> 			break;
+> 	    case SYS_getpid:
+> 			err = sys_getpid(&retval);
+> 			break;
+> 	    case SYS_fork:
+> 			if(DEBUGP) kprintf("call fork\n");
+> 			err = sys_fork(tf, &retval);
+> 			break;
+> 	    case SYS_execv:
+> 			err = sys_execv((userptr_t)tf->tf_a0, (char**)tf->tf_a1);
+> 			break;
+> 	    case SYS_waitpid:
+> 			err = sys_waitpid(tf->tf_a0, (int*) &tf->tf_a1, (int) tf->tf_a2, &retval);
+> 			break;
+> 	    case SYS__exit:
+> 			sys__exit(tf->tf_a0);
+> 			break;
+115c166
+< 		kprintf("Unknown syscall %d\n", callno);
+---
+> 		if(DEBUGP) kprintf("Unknown syscall %d\n", callno);
+126a178
+> 		if(DEBUGP) kprintf("ERROR in syscall error check: %d\n", callno);
+141a194
+> 	//if(DEBUGP) kprintf("END OF SYSCALL\n");
+148a202,419
+> 
+> 
+> 
+> 
+> int sys_open(userptr_t filename, int flags, mode_t mode, int32_t* retval){
+> 	int fd, ret, flagmask;
+> 	size_t len;
+> 	char* name;
+> 	struct vnode *vn;
+> 	struct fdesc* newfdesc;
+> 	struct stat *statbuf; //used for file properties
+> 
+> 	flagmask = O_CREAT | O_EXCL | O_TRUNC | O_APPEND;
+> 	flagmask = flags & !flagmask; //remove extra flags
+> 
+> 	//check valid arguments, no more than one flag is set, one must be set
+> 	if(filename == NULL){
+> 		return ENODEV;
+> 	}
+> 	if(flagmask != O_RDONLY && flagmask != O_WRONLY && flagmask != O_RDWR){
+> 		return EINVAL;
+> 	}
+> 
+> 	name = kmalloc(sizeof(char) * PATH_MAX);
+> 	if(name == NULL) {
+> 		return ENOMEM;
+> 	}
+> 	statbuf = kmalloc(sizeof(struct stat));
+> 	if(statbuf == NULL) {
+> 		kfree(name);
+> 		return ENOMEM;
+> 	}
+> 
+> 	newfdesc = (struct fdesc*) kmalloc(sizeof(struct fdesc));
+> 	if(newfdesc == NULL) {
+> 		kfree(name);
+> 		kfree(statbuf);
+> 		return ENOMEM;
+> 	}
+> 
+> 	//find file descriptor
+> 	for(fd = 0; fd < OPEN_MAX; fd++){
+> 		if((void*) curthread->t_fdtable[fd] == NULL) break;
+> 	}
+> 	curthread->t_fdtable[fd] = newfdesc;
+> 
+> 	//protect file name and open file
+> 	ret = copyinstr((const_userptr_t) filename, name, PATH_MAX, &len);
+> 	//if(DEBUGP) kprintf("Name before: %s, Name after: %s, len: %d\n", filename, name, len);
+> 	if(ret < 0){
+> 		kfree(name);
+> 		kfree(statbuf);
+> 		kfree(newfdesc);
+> 		return EIO;
+> 	}
+> 
+> 	ret = vfs_open(name, flags, mode, &vn);
+> 	if(ret){
+> 		kfree(name);
+> 		kfree(statbuf);
+> 		kfree(newfdesc);
+> 		if(DEBUGP) kprintf("vfs_open failed\n");
+> 		return ret;
+> 	}
+> 
+> 	//set variables in file table
+> 	curthread->t_fdtable[fd]->fname = name;
+> 	curthread->t_fdtable[fd]->flags = flags;
+> 	curthread->t_fdtable[fd]->vn = vn;
+> 	curthread->t_fdtable[fd]->fdlock = lock_create(name);
+> 	curthread->t_fdtable[fd]->refcount = 1;
+> 
+> 	if(curthread->t_fdtable[fd]->vn == NULL){
+> 		if(DEBUGP) kprintf("vn is null in open after setting fdtable\n");
+> 	}
+> 
+> 	//if append, set to file size
+> 	if((flags & O_APPEND) != 0){
+> 		//get vn statistics and set to current size
+> 		VOP_STAT(vn, statbuf);
+> 		curthread->t_fdtable[fd]->offset = statbuf->st_size;
+> 	}else{
+> 		curthread->t_fdtable[fd]->offset = 0;
+> 	}
+> 
+> 	kfree(statbuf);
+> 	
+> 	*retval = fd;
+> 	if(DEBUGP) kprintf("retval: %d\n", *retval);
+> 	return 0;
+> }
+> 
+> ssize_t sys_read(int fd, void* buf, size_t size, int32_t* retval){
+> 	int ret;
+> 	struct uio* read;
+> 
+> 	//check valid arguments
+> 	if(curthread->t_fdtable[fd] == NULL || buf == NULL || size == 0){
+> 		return EBADF;
+> 	}
+> 	lock_acquire(curthread->t_fdtable[fd]->fdlock);
+> 
+> 	read = kmalloc(sizeof(struct uio));
+> 
+> 	//set uio variables
+> 	read->uio_iov->iov_ubase = buf;
+>   	read->uio_iov->iov_len = size;
+>   	read->uio_offset = curthread->t_fdtable[fd]->offset;
+>   	read->uio_resid = size;
+>   	read->uio_segflg = UIO_USERSPACE;
+>  	read->uio_rw = UIO_READ;
+>   	read->uio_space = curthread->t_proc->p_addrspace; //WE THINK?!?!
+> 
+> 	//read
+> 	ret = VOP_READ(curthread->t_fdtable[fd]->vn, read);
+> 	if(ret < 0){
+> 		kfree(read);
+> 		return ret;
+> 	}
+> 
+> 	//update offset and set return to how many bytes read
+> 	curthread->t_fdtable[fd]->offset = read->uio_offset;
+> 
+> 	*retval = size - read->uio_resid;
+> 	kfree(read);
+> 	lock_release(curthread->t_fdtable[fd]->fdlock);
+> 
+> 	return 0;
+> }
+> 
+> int sys_write(int fd, void* buf, size_t size, int32_t* retval){
+> 
+> 	int ret;
+> 	struct uio* write;
+> 	//if(DEBUGP) kprintf("SYS_WRITE: in sys_write\n");
+> 
+> 	//check valid arguments
+> 	if(buf == NULL){
+> 		//kprintf("buff is null in write\n");
+> 		return EFAULT;
+> 	}
+> 	if(curthread->t_fdtable[fd] == NULL){
+> 		//kprintf("curthread->t_fdtable[fd] is null in write\n");
+> 		return EBADF;
+> 	}
+> 	//if(size == 0){
+> 	//	if(DEBUGP) kprintf("size is 0 in write\n");
+> 	//	return -1;
+> 	//}
+> 	//if(DEBUGP) kprintf("SYS_WRITE: get lock\n");
+> 	if(DEBUGP) kprintf("before lock_aqcuire\n");
+> 	lock_acquire(curthread->t_fdtable[fd]->fdlock);
+> 
+> 	if(DEBUGP) kprintf("kmalloc write\n");
+> 	//if(DEBUGP) kprintf("SYS_WRITE: kmalloc for write\n");
+> 	write = kmalloc(sizeof(struct uio));
+> 	//set uio variables
+> 	//if(DEBUGP) kprintf("SYS_WRITE: set write variables\n");
+> 
+> 
+> 	if(DEBUGP) kprintf("malloc iov\n");
+> 	write->uio_iov = kmalloc(sizeof(struct iovec));
+> 
+> 	write->uio_iov->iov_ubase = (void*) buf;
+>   	write->uio_iov->iov_len = size;
+>   	write->uio_offset = curthread->t_fdtable[fd]->offset;
+>   	write->uio_resid = size;
+>   	write->uio_segflg = UIO_USERSPACE;
+>  	write->uio_rw = UIO_WRITE;
+>   	write->uio_space = curthread->t_proc->p_addrspace; //WE THINK?!?!
+> 
+> 	//read
+> 	if(DEBUGP) kprintf("VOP_Write\n");
+> 	ret = VOP_WRITE(curthread->t_fdtable[fd]->vn, write);
+> 	if(ret < 0){
+> 		kfree(write->uio_iov);
+> 		kfree(write);
+> 		return ret;
+> 	}
+> 
+> 	//update offset and set return to how many bytes read
+> 	curthread->t_fdtable[fd]->offset = write->uio_offset;
+> 	*retval = size - write->uio_resid;
+> 	kfree(write->uio_iov);
+> 	kfree(write);
+> 	lock_release(curthread->t_fdtable[fd]->fdlock);
+> 
+> 	return 0;
+> }
+> 
+> int sys_close(int fd){
+> 	if(curthread->t_fdtable[fd] == NULL){
+> 		return EBADF;
+> 	}
+> 
+> 	//acquire lock
+> 	lock_acquire(curthread->t_fdtable[fd]->fdlock);
+> 
+> 
+> 	//decrease reference counter
+> 	curthread->t_fdtable[fd]->refcount--;
+> 	
+> 	//if no more references, close fd
+> 	if(curthread->t_fdtable[fd]->refcount == 0){
+> 		vfs_close(curthread->t_fdtable[fd]->vn);
+> 		kfree(curthread->t_fdtable[fd]->fname);
+> 		lock_destroy(curthread->t_fdtable[fd]->fdlock);
+> 		kfree(curthread->t_fdtable[fd]);
+> 		if(DEBUGP) kprintf("freed fd \n");
+> 		curthread->t_fdtable[fd] = NULL;
+> 	}else{
+> 		lock_release(curthread->t_fdtable[fd]->fdlock);
+> 	}
+> 
+> 	return 0;
+> }
+> 
+> 
+157,160c428,447
+< void
+< enter_forked_process(struct trapframe *tf)
+< {
+< 	(void)tf;
+---
+> void enter_forked_process(void* cinfo, unsigned long x){
+> 	(void) x;
+> 	struct childinfo* info;
+> 	int i;
+> 
+> 	
+> 
+> 	if(DEBUGP) kprintf("entered enter_forked_process\n");
+> 	info = (struct childinfo*) cinfo;
+> 
+> 	if(DEBUGP) kprintf("set child tf values\n");
+> 	info->tf->tf_v0 = 0;
+> 	info->tf->tf_a3 = 0;
+> 	info->tf->tf_epc += 4;
+> 
+> 	if(DEBUGP) kprintf("copy fdtable\n");
+> 	for(i = 0; i < OPEN_MAX; i++){
+> 		curthread->t_fdtable[i] = info->fdtable[i];
+> 		if(curthread->t_fdtable[i] != NULL)
+> 			curthread->t_fdtable[i]->refcount++;
+161a449,694
+> 
+> 	struct trapframe newtf;
+> 	memcpy(&newtf, info->tf, sizeof(struct trapframe));	
+> 
+> 	if(DEBUGP) kprintf("call mips_usermode\n");
+> 	mips_usermode(&newtf);
+> 
+> 	kfree(info->tf);
+> 	kfree(info);
+> }
+> 
+> 
+> pid_t sys_fork(struct trapframe *tf, int32_t* retval){
+> 
+> 	struct childinfo* info;
+> 	struct trapframe* newtf;
+> 	struct addrspace* newas;
+> 	struct proc* newproc;
+> 	int i, j;
+> 
+> 	if(DEBUGP) kprintf("start sys_fork!!!!!!!!!!!!!!!!!: %d\n", sizeof(struct proc));
+> 	newproc = (struct proc*) kmalloc(sizeof(struct proc));
+> 
+> 	lock_acquire(proc_Lock);
+> 
+> 	if(DEBUGP) kprintf("num threads: %d\n", newproc->p_numthreads);
+> 
+> 	//make copy of tf
+> 	if(DEBUGP) kprintf("make newtf\n");
+> 	newtf = (struct trapframe*) kmalloc(sizeof(struct trapframe));
+> 	if(DEBUGP) kprintf("memcpy newtf\n");
+> 	memcpy(newtf, tf, sizeof(struct trapframe));
+> 
+> 	//make copy of as
+> 	if(DEBUGP) kprintf("call as_copy\n");
+> 	as_copy(curthread->t_proc->p_addrspace, &newas);
+> 	if(DEBUGP) kprintf("end as_copy\n");
+> 
+> 	//make new process
+> 	newproc->p_name = (char*) kmalloc(sizeof(char));
+> 	newproc->p_name[0] = '\0';
+> 
+> 	for(i = 1; i < __PID_MAX; i++){
+> 		if(proc_Array[i] == NULL) break;
+> 	}
+> 	if(i == __PID_MAX) {
+> 		return ENPROC;
+> 	}
+> 	proc_Array[i] = newproc;
+> 	*retval = i;
+> 	newproc->p_id = i;
+> 	newproc->p_numthreads = 1;
+> 	newproc->p_addrspace = newas;
+> 	newproc->p_cwd = curthread->t_proc->p_cwd;
+> 
+> 	newproc->p_parent = curthread->t_proc->p_id;
+> 
+> 
+> 	newproc->p_parsem = kmalloc(sizeof(struct semaphore));
+> 	newproc->p_childsem = kmalloc(sizeof(struct semaphore));
+> 
+> 	newproc->p_parsem = sem_create("parent", 0);
+> 	newproc->p_childsem = sem_create("child", 0);
+> 	
+> 	memset(newproc->p_children, -1, __PID_MAX);
+> 
+> 	for(j = 0; j < __PID_MAX; j++){
+> 		if(curthread->t_proc->p_children[j] == -1){
+> 			curthread->t_proc->p_children[j] = newproc->p_id;
+> 			break;
+> 		}
+> 	}
+> 
+> 	if(j == __PID_MAX){
+> 		return ENPROC;
+> 	}
+> 
+> 
+> 	
+> 
+> 
+> 	info = (struct childinfo*) kmalloc(sizeof(struct childinfo));
+> 	info->tf = newtf;
+> 	info->fdtable = curthread->t_fdtable;
+> 
+> 	lock_release(proc_Lock);
+> 
+> 	if(DEBUGP) kprintf("call thread_fork\n");
+> 	thread_fork("childproc", newproc, enter_forked_process, info, 0);
+> 	
+> 	//kfree(newproc->p_name);
+> 	//kfree(newproc);
+> 	
+> 
+> 	return 0;
+> 
+> }
+> 
+> pid_t sys_getpid(int32_t* retval){
+> 	*retval = curthread->t_proc->p_id;
+> 	return 0;
+> }
+> 
+> 
+> int sys_execv(userptr_t prog, char** args){
+> 	char* progname;
+> 	char** progargs;
+> 	size_t size;
+> 	int ret, argc, i;
+> 	struct vnode *v;
+> 	vaddr_t startptr, stackptr;
+> 	userptr_t* argptr;
+> 
+> 	//struct addrspace *as;
+> 	//struct vnode *v;
+> 	//vaddr_t entrypoint, stackptr;
+> 
+> 	//set program name
+> 	progname = (char*) kmalloc(sizeof(char) * PATH_MAX);
+> 	ret = copyinstr((const_userptr_t) prog, progname, PATH_MAX, &size);
+> 	if(ret){
+> 		kfree(progname);
+> 		return EFAULT;
+> 	}
+> 	if(size == 1){
+> 		kfree(progname);
+> 		return EINVAL;
+> 	}
+> 
+> 	if(DEBUGP) kprintf("EXECV: name = %s\n", progname);
+> 
+> 	for(argc = 0; (void*) args[argc] != NULL; argc++);
+> 
+> 	progargs = (char**) kmalloc(sizeof(char*) * argc);
+> 	for(i = 0; i < argc; i++){
+> 		progargs[i] = (char*) kmalloc(sizeof(char) * strlen(args[i]) + 1);
+> 		ret = copyinstr((const_userptr_t) args[i], progargs[i], sizeof(char) * strlen(args[i]) + 1, &size);
+> 		
+> 		if(DEBUGP) kprintf("EXECV: read args[%d] = %s\n", i, progargs[i]);
+> 		//TODO error check
+> 	}	
+> 
+> 	if(curthread->t_proc->p_addrspace != NULL){
+> 		if(DEBUGP) kprintf("EXECV: destroy as\n");
+> 		as_destroy(curthread->t_proc->p_addrspace);
+> 	}
+> 
+> 	if(DEBUGP) kprintf("EXECV: vfs_open\n");
+> 	ret = vfs_open((char*) progname, O_RDONLY, 0, &v);
+> 	if(ret){
+> 		return ret;
+> 	}
+> 
+> 	//create and activate new as
+> 	if(DEBUGP) kprintf("EXECV: create as\n");
+> 	curthread->t_proc->p_addrspace = as_create();
+> 	if(DEBUGP) kprintf("EXECV: activate as\n");
+> 	as_activate();
+> 	
+> 	if(DEBUGP) kprintf("EXECV: load_elf\n");
+> 	ret = load_elf(v, &startptr);
+> 	
+> 
+> 	vfs_close(v);
+> 	ret = as_define_stack(curthread->t_proc->p_addrspace, &stackptr);
+> 
+> 
+> 	if(DEBUGP) kprintf("EXECV: move stackptr\n");
+> 	stackptr -= sizeof(char*) * (argc + 1);
+> 	argptr = (userptr_t*) stackptr;
+> 	copyout(progargs, (userptr_t) argptr, sizeof(char*) * (argc + 1));
+> 
+> 	for(i = 0; i < argc; i++){
+> 		if(DEBUGP) kprintf("EXECV: set argptr[%d]\n", i);
+> 		stackptr -= sizeof(char) * (strlen(progargs[i]) + 1);
+> 		argptr[i] = (userptr_t) stackptr;
+> 		copyout(progargs[i], (userptr_t) argptr[i], sizeof(char) * (strlen(progargs[i]) + 1));
+> 	}
+> 
+> 	argptr[argc] = 0;
+> 	stackptr -= stackptr % 8;
+> 
+> 	if(DEBUGP) kprintf("EXECV: enter new process\n");
+> 	enter_new_process(argc, (userptr_t) argptr, NULL, stackptr, startptr);
+> 
+> 	(void) progargs;
+> 	return 0;
+> }
+> 
+> pid_t sys_waitpid(pid_t pid, int *returncode, int flags, int32_t* retval){
+> 	(void) flags;
+> 	(void) pid;
+> 	(void) returncode;
+> 	(void) retval;
+> 
+> 	if(proc_Array[pid] == NULL){
+> 		return -1;
+> 	}
+> 	if(DEBUGP) kprintf("WAITPID: waiting for parent\n");
+> 	P(proc_Array[pid]->p_childsem);
+> 	if(DEBUGP) kprintf("WAITPID: done waiting for parent\n");
+> 	*returncode = proc_Array[pid]->p_exitcode;
+> 	*retval = pid;
+> 
+> 	/*
+> 	if(proc_Array[pid] == NULL){
+> 		return -1;
+> 	}
+> 
+> 	V(proc_Array[pid]->p_waitsem);
+> 
+> 	*retval = pid;
+> 	*returncode = proc_Array[pid]->p_exitcode;
+> 	*/
+> 	return 0;
+> }
+> 
+> void sys__exit(int code){
+> 	int i = 0;
+> 	curthread->t_proc->p_exitcode = code;
+> 	
+> 	V(curthread->t_proc->p_childsem);
+> 
+> 	P(curthread->t_proc->p_parsem);
+> 
+> 	proc_Array[curthread->t_proc->p_id] = NULL;
+> 
+> 	for(i = 0; curthread->t_proc->p_children[i] != -1; i++){
+> 		V(proc_Array[curthread->t_proc->p_children[i]]->p_parsem);	
+> 	}
+> 
+> 	kfree(curthread->t_proc->p_parsem);
+> 	kfree(curthread->t_proc->p_childsem);
+> 	kfree(curthread->t_proc->p_name);
+> 	spinlock_cleanup(&curthread->t_proc->p_lock);
+> 	as_destroy(curthread->t_proc->p_addrspace);
+> 
+> 	kprintf("thread_exit\n");
+> 	thread_exit();
+> 
+> 	kprintf("should not get here!!!!!!!\n");
+> 
+> 	while(1);
+> 
+> }
+> 
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/arch/mips/vm/dumbvm.c src/kern/arch/mips/vm/dumbvm.c
+245a246
+> 	//kprintf("DUMBVM: malloc - size: %d\n", sizeof(struct addrspace));
+250a252
+> 	//kprintf("DUMBVM: set creation variables;\n");
+398a401
+> 	//kprintf("DUMBVM: as_create();\n");
+403a407
+> 	//kprintf("DUMBVM: copy vars;\n");
+409a414
+> 	//kprintf("DUMBVM: as_prepare_load(new);\n");
+418a424
+> 	//kprintf("DUMBVM: move pbase1;\n");
+422a429
+> 	//kprintf("DUMBVM: move pbase2;\n");
+426a434
+> 	//kprintf("DUMBVM: move stackpbase;\n");
+Only in src/kern: build
+Only in src/kern/compile/ASST1/includelinks/machine: proc_array.h
+Only in src/kern/compile/ASST1/includelinks/mips: proc_array.h
+Only in src/kern/compile/ASST1/root: €
+Only in src/kern/compile/ASST1/root: €ˆ
+Only in src/kern/compile/ASST1/root: €
+Only in src/kern/compile/ASST1/root: €
+Only in src/kern/compile/ASST1/root: €
+Only in ../os161_proj1/src/kern/compile/ASST1/root: ASST1
+Only in src/kern/compile/ASST1/root: ASST2
+Only in src/kern/compile/ASST1/root: bin
+Only in src/kern/compile/ASST1/root: hostbin
+Only in src/kern/compile/ASST1/root: hostinclude
+Only in src/kern/compile/ASST1/root: include
+Only in src/kern/compile/ASST1/root: itWorks.scr
+Binary files ../os161_proj1/src/kern/compile/ASST1/root/kernel and src/kern/compile/ASST1/root/kernel differ
+Only in src/kern/compile/ASST1/root: kernel-ASST2
+Only in src/kern/compile/ASST1/root: lib
+Only in src/kern/compile/ASST1/root: make-run
+Only in src/kern/compile/ASST1/root: make-test
+Only in src/kern/compile/ASST1/root: man
+Only in src/kern/compile/ASST1/root: OurFile
+Only in src/kern/compile/ASST1/root: proofOfWorking.scr
+Only in src/kern/compile/ASST1/root: sbin
+File ../os161_proj1/src/kern/compile/ASST1/root/.sockets/gdb is a socket while file src/kern/compile/ASST1/root/.sockets/gdb is a socket
+File ../os161_proj1/src/kern/compile/ASST1/root/.sockets/meter is a socket while file src/kern/compile/ASST1/root/.sockets/meter is a socket
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/compile/ASST1/root/sys161.conf src/kern/compile/ASST1/root/sys161.conf
+154c154
+< 31	mainboard  ramsize=2M    cpus=1
+---
+> 31	mainboard  ramsize=4M    cpus=1
+Only in src/kern/compile/ASST1/root: €t
+Only in src/kern/compile/ASST1/root: testbin
+Only in src/kern/compile/ASST1/root: €x
+Only in src/kern/compile: ASST2
+Only in src/kern/conf: ASST2
+Only in src/kern/include: proc_array.h
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/include/proc.h src/kern/include/proc.h
+39a40,41
+> #include <synch.h>
+> #include <limits.h>
+61a64,65
+> 
+> 
+63a68,76
+> 	pid_t p_id;
+> 	int p_exitcode;
+> 
+> 	pid_t p_parent;
+> 	pid_t p_children[__PID_MAX];
+> 
+> 	struct semaphore* p_parsem;
+> 	struct semaphore* p_childsem;
+> 
+72c85
+< 
+---
+> 	int x[100];
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/include/syscall.h src/kern/include/syscall.h
+48c48
+< void enter_forked_process(struct trapframe *tf);
+---
+> void enter_forked_process(void* tf, unsigned long x);
+53a54,63
+> //system call functions for assignment 2
+> int sys_open(userptr_t filename, int flags, mode_t mode, int32_t* retval);
+> ssize_t sys_read(int fd, void* buf, size_t size, int32_t* retval);
+> int sys_write(int fd, void* buf, size_t size, int32_t* retval);
+> int sys_close(int fd);
+> __DEAD void sys__exit(int code);
+> int sys_execv(userptr_t prog, char** args);
+> pid_t sys_fork(struct trapframe *tf, int32_t* retval);
+> pid_t sys_getpid(int32_t* retval);
+> pid_t sys_waitpid(pid_t pid, int *returncode, int flags, int32_t* retval);
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/include/test.h src/kern/include/test.h
+108a109,114
+> /* io tests */
+> int io1(void);
+> int io2(void);
+> int io3(void);
+> int io4(void);
+> 
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/include/thread.h src/kern/include/thread.h
+41a42,45
+> #include <synch.h>
+> #include <vnode.h>
+> #include <uio.h>
+> #include <limits.h>
+58d61
+< 
+66a70,82
+> 
+> /* File Descriptor structure */
+> struct fdesc {
+> 	char* fname;
+> 	int flags;
+> 	int refcount;
+> 	off_t offset;
+> 	struct vnode* vn;
+> 	struct lock* fdlock;
+> 	struct uio* fduio;
+> };
+> 
+> 
+76a93,95
+> 	struct fdesc* t_fdtable[OPEN_MAX];
+> 	struct cv* t_cv;
+> 
+85a105
+> 
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/main/main.c src/kern/main/main.c
+51a52,53
+> #include <proc_array.h>
+> #include <kern/fcntl.h>
+98a101,105
+> 
+> 	//Initialize global variables
+> 	memset(proc_Array, 0, (sizeof(struct proc*) * __PID_MAX));
+> 	proc_Lock = lock_create("proc_lock");
+> 
+140a148
+> 
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/main/menu.c src/kern/main/menu.c
+116a117
+> 	int32_t retval;
+132c133
+< 	}
+---
+> 	} else {
+138a140,143
+> 		//wait for the child to end before returning to the menu
+> 		sys_waitpid(proc->p_id, &result, 0, &retval);
+> 	}
+> 	
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/syscall/runprogram.c src/kern/syscall/runprogram.c
+46a47
+> #include <proc_array.h>
+58a60,71
+> 	struct vnode* vin;
+> 	struct vnode* vout;
+> 	struct vnode* verr;
+> 	struct fdesc* fin;
+> 	struct fdesc* fout;
+> 	struct fdesc* ferr;
+> 	char sin[6] = "STDIN";
+> 	char sout[6] = "STDOUT";
+> 	char serr[6] = "STDERR";
+> 	char in[5] = "con:";
+> 	char out[5] = "con:";
+> 	char err[5] = "con:";
+61a75,79
+> 	if(proc_Lock == NULL){
+> 		proc_Lock = lock_create("proc_Lock");
+> 	}
+> 	lock_acquire(proc_Lock);
+> 
+89a108,161
+> 	//set up stdin stdout and stderr
+> 
+> 	fin = (struct fdesc*) kmalloc(sizeof(struct fdesc));
+> 	vfs_open(in, O_RDONLY, 0664, &vin);
+> 	curthread->t_fdtable[0] = fin;
+> 
+> 	kprintf("SET STDIN/OUT/ERR FOR NEW PROCESS\n");
+> 
+> 
+> 	//set variables in file table
+> 	curthread->t_fdtable[0]->fname = sin;
+> 	curthread->t_fdtable[0]->flags = O_RDONLY;
+> 	curthread->t_fdtable[0]->vn = vin;
+> 	curthread->t_fdtable[0]->fdlock = lock_create(sin);
+> 	curthread->t_fdtable[0]->refcount = 1;
+> 	if(curthread->t_fdtable[0]->vn == NULL){
+> 		kprintf("vin is null\n");
+> 	}
+> 
+> 	fout = (struct fdesc*) kmalloc(sizeof(struct fdesc));
+> 	vfs_open(out, O_WRONLY, 0664, &vout);
+> 	curthread->t_fdtable[1] = fout;
+> 	if(vout == NULL){
+> 		//kprintf("vout1 is null\n");
+> 	}
+> 
+> 	//set variables in file table
+> 	curthread->t_fdtable[1]->fname = sout;
+> 	curthread->t_fdtable[1]->flags = O_WRONLY;
+> 	curthread->t_fdtable[1]->vn = vout;
+> 	curthread->t_fdtable[1]->fdlock = lock_create(sout);
+> 	curthread->t_fdtable[1]->refcount = 1;
+> 	if(curthread->t_fdtable[1]->vn == NULL){
+> 		kprintf("vout is null\n");
+> 	}
+> 
+> 
+> 	ferr = (struct fdesc*) kmalloc(sizeof(struct fdesc));
+> 	vfs_open(err, O_WRONLY, 0664, &verr);
+> 	curthread->t_fdtable[2] = ferr;
+> 	if(verr == NULL){
+> 		//kprintf("verr1 is null\n");
+> 	}
+> 
+> 	//set variables in file table
+> 	curthread->t_fdtable[2]->fname = serr;
+> 	curthread->t_fdtable[2]->flags = O_WRONLY;
+> 	curthread->t_fdtable[2]->vn = verr;
+> 	curthread->t_fdtable[2]->fdlock = lock_create(serr);
+> 	curthread->t_fdtable[2]->refcount = 1;
+> 	if(curthread->t_fdtable[2]->vn == NULL){
+> 		//kprintf("verr is null\n");
+> 	}
+> 
+99a172,201
+> 
+> 	//proc_Array[1] = curthread->t_proc;
+> 	//curthread->t_proc->p_id = 1;
+> 	//kprintf("something\n");
+> 	/*
+> 	//get and set pid
+> 	for(pid = 1; pid < __PID_MAX; pid++){
+> 		if(proc_Array[pid] == NULL) break;
+> 	}
+> 	kprintf("runprogram pid to be %d\n", pid);
+> 
+> 	curthread->t_proc->p_id = pid;
+> 	proc_Array[pid] = curthread->t_proc;
+> 	kprintf("set runprogram pid\n");
+> 	*/
+> 
+> 
+> 	//assign parents sems
+> 	curthread->t_proc->p_parsem = kmalloc(sizeof(struct semaphore));
+> 	curthread->t_proc->p_childsem = kmalloc(sizeof(struct semaphore));
+> 
+> 	curthread->t_proc->p_parsem = sem_create("parent", 1);
+> 	curthread->t_proc->p_childsem = sem_create("child", 0);
+> 
+> 	memset(curthread->t_proc->p_children, -1, __PID_MAX);
+> 
+> 
+> 	lock_release(proc_Lock);
+> 	
+> 
+106d207
+< 	panic("enter_new_process returned\n");
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/test/asst1_tests.c src/kern/test/asst1_tests.c
+8a9,10
+> #include <syscall.h>
+> #include <kern/fcntl.h>
+10,494c12
+< 
+< static unsigned waiters_running = 0;
+< static struct spinlock waiters_lock = SPINLOCK_INITIALIZER;
+< 
+< static void ok(void) {
+< 	kprintf("Test complete; now cleaning up.\n");
+< }
+< /*
+< static bool spinlock_not_held(struct spinlock *splk) {
+< 	return splk->splk_holder == NULL;
+< }
+< */
+< 
+< /* =============
+<    =   LOCKS   =
+<    =============
+< */
+< 
+< #define NAMESTRING "LOCK-TESTS"
+< 
+< static struct lock* makelock() {
+< 	struct lock* lock;
+< 
+< 	lock = lock_create(NAMESTRING);
+< 	if (lock == NULL) {
+< 		panic("asst1: whoops: lock_create failed\n");
+< 	}
+< 	return lock;
+< }
+< 
+< //A thread that just waits on a lock.
+< static void waiter(struct lock* lock) {
+< 	lock_acquire(lock);
+< 
+< 	spinlock_acquire(&waiters_lock);
+< 	KASSERT(waiters_running > 0);
+< 	waiters_running--;
+< 	spinlock_release(&waiters_lock);
+< 
+< 	lock_release(lock);
+< }
+< 
+< 
+< // Set up a waiter
+< static void makewaiter(struct lock* lock) {
+< 	int result;
+< 
+< 	spinlock_acquire(&waiters_lock);
+< 	waiters_running++;
+< 	spinlock_release(&waiters_lock);
+< 
+< 	result = thread_fork("lock waiter", NULL, (void*) waiter, lock, 0);
+< 	if (result) {
+< 		panic("lockunit: thread_fork failed\n");
+< 	}
+< 	kprintf("Sleeping for waiter to run\n");
+< 	clocksleep(1);
+< }
+< 
+< 
+< //Lock can be acquired and released with no issues
+< int locku1(){
+< 
+< 	struct lock* lock = makelock();
+< 
+< 	lock_acquire(lock);
+< 	lock_release(lock);
+< 	
+< 	ok();
+< 	lock_destroy(lock);
+< 	return 0;
+< }
+< 
+< //Lock will be waited on if one process is using it
+< int locku2(){
+< 
+< 	struct lock* lock = makelock();
+< 	lock_acquire(lock);
+< 
+< 	makewaiter(lock);	
+< 
+< 	KASSERT(waiters_running == 1);
+< 
+< 	lock_release(lock);
+< 
+< 	ok();
+< 	lock_destroy(lock);
+< 	return 0;
+< }
+< 
+< //Lock can be acquired and released multiple times
+< int locku3(){
+< 	kprintf("This will hang if the test fails.\n");
+< 
+< 	struct lock* lock = makelock();
+< 
+< 	lock_acquire(lock);
+< 	lock_release(lock);
+< 
+< 	lock_acquire(lock);
+< 	lock_release(lock);
+< 	
+< 	ok();
+< 	lock_destroy(lock);
+< 	return 0;
+< }
+< 
+< //Unowned lock cannot be released
+< int locku4(){
+< 	kprintf("This should cause a KASSERT failure.\n");
+< 
+< 	struct lock* lock = makelock();
+< 
+< 	lock_release(lock);
+< 
+< 	ok();
+< 	lock_destroy(lock);
+< 	return 0;
+< }
+< 
+< 
+< 
+< 
+< 
+< 
+< /* ==========
+<    =   CV   =
+<    ==========
+< */
+< 
+< #define CVNAMESTRING "CV-TESTS"
+< struct lock* cvGlobalLock;
+< 
+< //A thread that just waits on a lock.
+< static void cvwaiter(struct cv* cv) {
+< 
+< 	lock_acquire(cvGlobalLock);
+< 
+< 	spinlock_acquire(&waiters_lock);
+< 	waiters_running++;
+< 	spinlock_release(&waiters_lock);
+< 
+< 	cv_wait(cv, cvGlobalLock);
+< 
+< 	spinlock_acquire(&waiters_lock);
+< 	KASSERT(waiters_running > 0);
+< 	waiters_running--;
+< 	spinlock_release(&waiters_lock);
+< 
+< 	lock_release(cvGlobalLock);
+< 
+< 	kprintf("CV Waiter complete.\n");
+< }
+< 
+< 
+< // Set up a waiter
+< static void makecvwaiter(struct cv* cv) {
+< 	int result;
+< 
+< 
+< 	result = thread_fork("cv waiter", NULL, (void*) cvwaiter, cv, 0);
+< 	if (result) {
+< 		panic("cvunit: thread_fork failed\n");
+< 	}
+< 	kprintf("Sleeping for cvwaiter to run\n");
+< 	clocksleep(1);
+< }
+< 
+< static struct cv* makecv() {
+< 	struct cv* cv;
+< 
+< 	cv = cv_create(CVNAMESTRING);
+< 	if (cv == NULL) {
+< 		panic("asst1: whoops: cv_create failed\n");
+< 	}
+< 	return cv;
+< }
+< 
+< 
+< 
+< //Verify that you can signal a cv
+< int cvu1(){
+< 	waiters_running = 0;
+< 	kprintf("Waiter should print when signalled.\n");
+< 	struct cv* cv = makecv();
+< 	cvGlobalLock = makelock();
+< 
+< 	makecvwaiter(cv);
+< 	clocksleep(1);
+< 
+< 	lock_acquire(cvGlobalLock);
+< 	cv_signal(cv, cvGlobalLock);
+< 	lock_release(cvGlobalLock);
+< 
+< 	while(waiters_running > 0);
+< 	lock_destroy(cvGlobalLock);
+< 	ok();
+< 	return 0;
+< }
+< 
+< //Verify that cv's will wait until signalled, and only one is released at a time
+< int cvu2(){
+< 	waiters_running = 0;
+< 	struct cv* cv = makecv();
+< 	cvGlobalLock = makelock();
+< 
+< 	makecvwaiter(cv);
+< 	makecvwaiter(cv);
+< 	makecvwaiter(cv);
+< 	while(waiters_running < 3);
+< 
+< 	lock_acquire(cvGlobalLock);
+< 	kprintf("First signal.\n");
+< 	cv_signal(cv, cvGlobalLock);
+< 	lock_release(cvGlobalLock);
+< 	clocksleep(1);
+< 
+< 	lock_acquire(cvGlobalLock);
+< 	kprintf("Second signal.\n");
+< 	cv_signal(cv, cvGlobalLock);
+< 	lock_release(cvGlobalLock);
+< 	clocksleep(1);
+< 
+< 	lock_acquire(cvGlobalLock);
+< 	kprintf("Third signal.\n");
+< 	cv_signal(cv, cvGlobalLock);
+< 	lock_release(cvGlobalLock);
+< 	clocksleep(1);
+< 
+< 	while(waiters_running > 0);
+< 	lock_destroy(cvGlobalLock);
+< 	ok();
+< 	return 0;
+< }
+< 
+< //cv_broadcast releases all waiters
+< int cvu3(){
+< 	waiters_running = 0;
+< 	struct cv* cv = makecv();
+< 	cvGlobalLock = makelock();
+< 
+< 	makecvwaiter(cv);
+< 	makecvwaiter(cv);
+< 	makecvwaiter(cv);
+< 	while(waiters_running < 3);
+< 
+< 	lock_acquire(cvGlobalLock);
+< 	kprintf("Three CV's should be signalled.\n");
+< 	cv_broadcast(cv, cvGlobalLock);
+< 	lock_release(cvGlobalLock);
+< 	
+< 	while(waiters_running > 0);
+< 	lock_destroy(cvGlobalLock);
+< 	ok();
+< 	return 0;
+< }
+< 
+< //Verify that signals only release currently waiting cv's
+< int cvu4(){
+< 	waiters_running = 0;
+< 	struct cv* cv = makecv();
+< 	cvGlobalLock = makelock();
+< 
+< 	lock_acquire(cvGlobalLock);
+< 	cv_signal(cv, cvGlobalLock);
+< 	lock_release(cvGlobalLock);
+< 
+< 	makecvwaiter(cv);
+< 
+< 	while(waiters_running < 1);
+< 	kprintf("There should be a delay before the waiter completes.\n");
+< 	clocksleep(5);
+< 
+< 	lock_acquire(cvGlobalLock);
+< 	cv_signal(cv, cvGlobalLock);
+< 	lock_release(cvGlobalLock);
+< 	
+< 	while(waiters_running > 0);
+< 	lock_destroy(cvGlobalLock);
+< 	ok();
+< 	return 0;
+< }
+< 
+< 
+< 
+< 
+< /* ===============
+<    =   RWLOCKS   =
+<    ===============
+< */
+< 
+< #define RWNAMESTRING "RWLOCK-TESTS"
+< 
+< static struct rwlock* makerwlock() {
+< 	struct rwlock* rwlock;
+< 
+< 	rwlock = rwlock_create(RWNAMESTRING);
+< 	if (rwlock == NULL) {
+< 		panic("asst1: whoops: rwlock_create failed\n");
+< 	}
+< 	return rwlock;
+< }
+< 
+< 
+< //A thread that just waits on a lock.
+< static void readwaiter(struct rwlock* rwlock) {
+< 	rwlock_acquire(rwlock, READ);
+< 
+< 	spinlock_acquire(&waiters_lock);
+< 	kprintf("READER: %d processes currently running.\n", waiters_running);
+< 	spinlock_release(&waiters_lock);
+< 	clocksleep(5);
+< 	spinlock_acquire(&waiters_lock);
+< 	KASSERT(waiters_running > 0);
+< 	waiters_running--;
+< 	spinlock_release(&waiters_lock);
+< 
+< 	kprintf("Read Waiter complete.\n");
+< 	
+< 	rwlock_release(rwlock, READ);
+< }
+< 
+< //A thread that just waits on a lock.
+< static void writewaiter(struct rwlock* rwlock) {
+< 	rwlock_acquire(rwlock, WRITE);
+< 
+< 	spinlock_acquire(&waiters_lock);
+< 	kprintf("WRITER: %d processes currently running.\n", waiters_running);
+< 	spinlock_release(&waiters_lock);
+< 	clocksleep(5);
+< 	spinlock_acquire(&waiters_lock);
+< 	KASSERT(waiters_running > 0);
+< 	waiters_running--;
+< 	spinlock_release(&waiters_lock);
+< 
+< 	kprintf("Write Waiter complete.\n");
+< 	
+< 	rwlock_release(rwlock, WRITE);
+< }
+< 
+< // Set up a waiter
+< static void rwmakewaiter(struct rwlock* rwlock, int mode) {
+< 	int result;
+< 
+< 	spinlock_acquire(&waiters_lock);
+< 	waiters_running++;
+< 	spinlock_release(&waiters_lock);
+< 
+< 	if(mode == READ){
+< 		result = thread_fork("read lock waiter", NULL, (void*) readwaiter, rwlock, 0);
+< 		if (result) {
+< 			panic("rwlockunit: thread_fork failed\n");
+< 		}
+< 	}else if(mode == WRITE){
+< 		result = thread_fork("write lock waiter", NULL, (void*) writewaiter, rwlock, 0);
+< 		if (result) {
+< 			panic("rwlockunit: thread_fork failed\n");
+< 		}
+< 	}
+< 	clocksleep(1);
+< }
+< 
+< 
+< //Two reads should be able to hold lock at the same time
+< int rwlocku1(){
+< 	waiters_running = 0;
+< 	struct rwlock* rwlock = makerwlock();
+< 
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, READ);
+< 
+< 	while(waiters_running > 0);
+< 	
+< 	ok();
+< 	rwlock_destroy(rwlock);
+< 	return 0;
+< }
+< 
+< //Two writers should wait for the first to finish
+< int rwlocku2(){
+< 	waiters_running = 0;
+< 	struct rwlock* rwlock = makerwlock();
+< 
+< 	rwmakewaiter(rwlock, WRITE);
+< 	rwmakewaiter(rwlock, WRITE);
+< 
+< 	while(waiters_running > 0);
+< 	
+< 	ok();
+< 	rwlock_destroy(rwlock);
+< 	return 0;
+< }
+< //writers should wait for readers to finish
+< int rwlocku3(){
+< 	waiters_running = 0;
+< 	struct rwlock* rwlock = makerwlock();
+< 
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, WRITE);
+< 
+< 	while(waiters_running > 0);
+< 	
+< 	ok();
+< 	rwlock_destroy(rwlock);
+< 	return 0;
+< }
+< //readers should wait for writers to finish
+< int rwlocku4(){
+< 	waiters_running = 0;
+< 	struct rwlock* rwlock = makerwlock();
+< 
+< 	rwmakewaiter(rwlock, WRITE);
+< 	rwmakewaiter(rwlock, READ);
+< 
+< 	while(waiters_running > 0);
+< 	
+< 	ok();
+< 	rwlock_destroy(rwlock);
+< 	return 0;
+< }
+< //writers should wait for all readers to finish
+< int rwlocku5(){
+< 	waiters_running = 0;
+< 	struct rwlock* rwlock = makerwlock();
+< 
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, WRITE);
+< 
+< 	while(waiters_running > 0);
+< 	
+< 	ok();
+< 	rwlock_destroy(rwlock);
+< 	return 0;
+< }
+< //readers and writers should all wait to prevent starvation
+< int rwlocku6(){
+< 	waiters_running = 0;
+< 	struct rwlock* rwlock = makerwlock();
+< 
+< 	rwmakewaiter(rwlock, WRITE);
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, WRITE);
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, WRITE);
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, READ);
+< 	rwmakewaiter(rwlock, READ);
+< 
+< 	while(waiters_running > 0);
+< 	
+< 	ok();
+< 	rwlock_destroy(rwlock);
+< 	return 0;
+< }
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+< 
+---
+> //Jon Faron, Riley Hirn, Josh Johnson
+497,559c15,18
+<   int err = 0;
+< 	int ret;
+<   int i;
+< 	int (*locktests[4])();
+< 	int (*rwlocktests[6])();
+< 	int (*cvtests[4])();
+< 	
+< 	locktests[0] = locku1;
+< 	locktests[1] = locku2;
+< 	locktests[2] = locku3;
+< 	locktests[3] = locku4;
+< 
+< 	cvtests[0] = cvu1;
+< 	cvtests[1] = cvu2;
+< 	cvtests[2] = cvu3;
+< 	cvtests[3] = cvu4;
+< 	
+< 	rwlocktests[0] = rwlocku1;
+< 	rwlocktests[1] = rwlocku2;
+< 	rwlocktests[2] = rwlocku3;
+< 	rwlocktests[3] = rwlocku4;
+< 	rwlocktests[4] = rwlocku5;
+< 	rwlocktests[5] = rwlocku6;
+< 
+< 
+< 
+<   kprintf("Args %d\n",nargs);
+<   for (i=0;i<nargs;i++)kprintf("Arg[%d] <%s>\n",i,args[i]);
+< 	
+< 	
+< 	kprintf("\n\n-- LOCK TESTS --\n\n");
+< 
+< 	for(i = 0; i < 4; i++){
+< 		kprintf("Starting lock test %d\n", i + 1);
+< 		ret = locktests[i]();
+< 		err += ret;
+< 		kprintf("Test %d complete with status %d\n\n", i + 1, ret);
+< 	}
+< 
+< 	kprintf("\n\n-- CV TESTS --\n\n");
+< 
+< 	for(i = 0; i < 4; i++){
+< 		kprintf("Starting cv test %d\n", i + 1);
+< 		ret = cvtests[i]();
+< 		err += ret;
+< 		kprintf("Test %d complete with status %d\n\n", i + 1, ret);
+< 	}
+< 	
+< 	kprintf("\n\n-- RWLOCK TESTS --\n\n");
+< 
+< 	for(i = 0; i < 6; i++){
+< 		kprintf("Starting rwlock test %d\n", i + 1);
+< 		ret = rwlocktests[i]();
+< 		err += ret;
+< 		kprintf("Test %d complete with status %d\n\n", i + 1, ret);
+< 	}
+< 
+< 
+<   kprintf("\n---------------------------\n");
+<   kprintf("Tests complete with status %d\n",err);
+<   kprintf("UNIT tests complete\n");
+<   kprintf("Number of errors: %d\n", err);
+<   return(err);
+---
+> 	(void) nargs;
+> 	(void) args;
+> 	kprintf("Testy test test");
+> 	return 0;
+561d19
+< 
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/thread/synch.c src/kern/thread/synch.c
+276a277,278
+>     spinlock_acquire(&cv->cv_lock);
+> 
+279,280d280
+< 
+<     spinlock_acquire(&cv->cv_lock);
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/thread/thread.c src/kern/thread/thread.c
+52a53,54
+> #include <limits.h>
+> #include <proc_array.h>
+149a152
+> 
+499c502
+< 	int result;
+---
+> 	int result;//, pid;
+500a504,505
+> 
+> 	//kprintf("in thread_fork\n");
+504a510
+> 	//kprintf("done with thread_create\n");
+512a519
+> 	//kprintf("init stack\n");
+530a538,550
+> 	//kprintf("proc stuff\n");
+> 
+> /*
+> 	//get and set pid
+> 	for(pid = 1; pid < __PID_MAX; pid++){
+> 		if(proc_Array[pid] == NULL) break;
+> 	}
+> 	//kprintf("found pid to be %d\n", pid);
+> 
+> 	proc->p_id = pid;
+> 	proc_Array[pid] = proc;
+> 	//kprintf("set pid\n");
+> */
+537a558
+> 	//kprintf("inc iplhigh_count\n");
+540a562
+> 	//kprintf("switchframe\n");
+543a566
+> 	//kprintf("make runnable\n");
+545c568
+< 	return 0;
+---
+> 	return 0; //pid
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/kern/vm/addrspace.c src/kern/vm/addrspace.c
+55a56,64
+> 	/*
+> 	as->as_vbase1 = 0;
+> 	as->as_pbase1 = 0;
+> 	as->as_npages1 = 0;
+> 	as->as_vbase2 = 0;
+> 	as->as_pbase2 = 0;
+> 	as->as_npages2 = 0;
+> 	as->as_stackpbase = 0;
+> 	*/
+73,75c82,87
+< 
+< 	(void)old;
+< 
+---
+> 	/*
+> 	new->as_vbase1 = old->as_vbase1;
+> 	new->as_npages1 = old->as_npages1;
+> 	new->as_vbase2 = old->as_vbase2;
+> 	new->as_npages2 = old->as_npages2;
+> 	*/
+Only in src/userland/bin/cat: build
+Only in src/userland/bin/cp: build
+Only in src/userland/bin/false: build
+Only in src/userland/bin/ln: build
+Only in src/userland/bin/ls: build
+Only in src/userland/bin/mkdir: build
+Only in src/userland/bin/mv: build
+Only in src/userland/bin/pwd: build
+Only in src/userland/bin/rm: build
+Only in src/userland/bin/rmdir: build
+Only in src/userland/bin/sh: build
+Only in src/userland/bin/sync: build
+Only in src/userland/bin/tac: build
+Only in src/userland/bin/true: build
+Only in src/userland: build
+Only in src/userland/include: test.h
+Only in src/userland/lib/crt0: build
+Only in src/userland/lib/hostcompat: build
+Only in src/userland/lib/libc: build
+Only in src/userland/lib/libtest: build
+Only in src/userland/sbin/dumpsfs: build
+Only in src/userland/sbin/halt: build
+Only in src/userland/sbin/mksfs: build
+Only in src/userland/sbin/poweroff: build
+Only in src/userland/sbin/reboot: build
+Only in src/userland/sbin/sfsck: build
+Only in src/userland/testbin/add: build
+Only in src/userland/testbin/argtest: build
+Only in src/userland/testbin: asst2
+Only in src/userland/testbin/badcall: build
+Only in src/userland/testbin/bigexec: build
+Only in src/userland/testbin/bigfile: build
+Only in src/userland/testbin/bigfork: build
+Only in src/userland/testbin/bigseek: build
+Only in src/userland/testbin/bloat: build
+Only in src/userland/testbin/conman: build
+Only in src/userland/testbin/crash: build
+Only in src/userland/testbin/ctest: build
+Only in src/userland/testbin/dirconc: build
+Only in src/userland/testbin/dirseek: build
+Only in src/userland/testbin/dirtest: build
+Only in src/userland/testbin/factorial: build
+Only in src/userland/testbin/farm: build
+Only in src/userland/testbin/faulter: build
+Only in src/userland/testbin/filetest: build
+Only in src/userland/testbin/forkbomb: build
+Only in src/userland/testbin/forktest: build
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/userland/testbin/forktest/forktest.c src/userland/testbin/forktest/forktest.c
+62a63
+> 	printf("done forking :)");
+Only in src/userland/testbin/frack: build
+Only in src/userland/testbin/f_test: build
+Only in src/userland/testbin/guzzle: build
+Only in src/userland/testbin/hash: build
+Only in src/userland/testbin/hog: build
+Only in src/userland/testbin/huge: build
+Only in src/userland/testbin/kitchen: build
+diff -rw -x '*.[^chsS]' ../os161_proj1/src/userland/testbin/Makefile src/userland/testbin/Makefile
+8c8
+< SUBDIRS=add argtest badcall bigexec bigfile bigfork bigseek bloat conman \
+---
+> SUBDIRS=asst2 add argtest badcall bigexec bigfile bigfork bigseek bloat conman \
+Only in src/userland/testbin/malloctest: build
+Only in src/userland/testbin/matmult: build
+Only in src/userland/testbin/multiexec: build
+Only in src/userland/testbin/palin: build
+Only in src/userland/testbin/parallelvm: build
+Only in src/userland/testbin/poisondisk: build
+Only in src/userland/testbin/psort: build
+Only in src/userland/testbin/quinthuge: build
+Only in src/userland/testbin/quintmat: build
+Only in src/userland/testbin/quintsort: build
+Only in src/userland/testbin/randcall: build
+Only in src/userland/testbin/redirect: build
+Only in src/userland/testbin/rmdirtest: build
+Only in src/userland/testbin/rmtest: build
+Only in src/userland/testbin/sbrktest: build
+Only in src/userland/testbin/schedpong: build
+Only in src/userland/testbin/sink: build
+Only in src/userland/testbin/sort: build
+Only in src/userland/testbin/sparsefile: build
+Only in src/userland/testbin/sty: build
+Only in src/userland/testbin/tail: build
+Only in src/userland/testbin/tictac: build
+Only in src/userland/testbin/triplehuge: build
+Only in src/userland/testbin/triplemat: build
+Only in src/userland/testbin/triplesort: build
+Only in src/userland/testbin/usemtest: build
+Only in src/userland/testbin/zero: build
