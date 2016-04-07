@@ -184,15 +184,27 @@ runprogram(char *progname)
 	proc_Array[pid] = curthread->t_proc;
 	kprintf("set runprogram pid\n");
 	*/
+
+
+	//assign parents sems
+	curthread->t_proc->p_parsem = kmalloc(sizeof(struct semaphore));
+	curthread->t_proc->p_childsem = kmalloc(sizeof(struct semaphore));
+
+	curthread->t_proc->p_parsem = sem_create("parent", 1);
+	curthread->t_proc->p_childsem = sem_create("child", 0);
+
+	memset(curthread->t_proc->p_children, -1, __PID_MAX);
+
+
 	lock_release(proc_Lock);
 	
+
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  NULL /*userspace addr of environment*/,
 			  stackptr, entrypoint);
 
 	/* enter_new_process does not return. */
-	panic("enter_new_process returned\n");
 	return EINVAL;
 }
 

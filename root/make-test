@@ -1,5 +1,5 @@
 cd ../src
-bmake | grep asst | cat
-bmake install | grep asst | cat
+bmake | grep asst
+bmake install | grep asst
 cd ../root
 ./make-run

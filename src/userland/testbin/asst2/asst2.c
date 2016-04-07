@@ -21,13 +21,12 @@
 
 int io1(){
 	//char buf[100];
-	printf("type something: ");	
-	printf("type something2: ");	
+	printf("type something: ");		
 	//read(0, buf, 100);
 	//write(1, "\nread ", 6);
 	//write(1, buf, 100);
 	//write(1, " from stdin\n", 13);
-	//printf("write to stdout Test passed!\n");
+	printf("write to stdout Test passed!\n");
 	write(1, "write to stderr Test passed!\n", 30);
 	return 0;
 }
@@ -69,42 +68,44 @@ int io4() {
 }
 
 int forktest() {
+	printf("FORK TEST\n");
 	int i;
 	fork();
-	write(1, "Starting\n", 10);
+	fork();
 	i = fork();
 	printf("fork returned: %d\n", i);
 	printf("my pid is: %d\n", getpid());
-
 	return 0;
 }
 
 int waittest() {
-	int i, pid;
+	int i, j, pid;
 	//i = 0;
-	(void) i;
+	//(void) i;
+	printf("WAITPID TEST\n");
 	pid = fork();
-	printf("fork returned %d\n", pid);
-/*
+	write(1, "starting\n", 10);
 	if(pid == 0){
 		//child 
-		printf("CHILD: start counting\n");
-		while(i < 10000000) i++;
-		printf("CHILD: done counting\n");
-		//exit(1);
+		write(1, "child count\n", 13);
+		while(i < 2000000000) {
+			for(j = 0; j < 1000000; j++);
+			i++;
+		}
+		write(1, "child done\n", 12);
+		exit(0);
 	}else{
 		//parent
-		printf("PARENT: waiting on pid %d\n", pid);
-		//waitpid(pid, &i, 0);
-		//printf("PARENT: done waiting - returned %d\n", i);
+		//printf("PARENT: waiting on pid %d\n", pid);
+		write(1, "parent waiting\n", 16);
+		waitpid(pid, &i, 0);
+		write(1, "parent done\n", 13);
 	}
-*/
+
 	return 0;
 }
 
 int execvtest() {
-	char * const* array = {"testName", "1", "2", "3", "4", NULL};
-	execv("testName", array);
 	return 0;
 }
 /*
@@ -161,7 +162,10 @@ int io2(){
 
 
 int main(int nargs , char ** args){
-	execvtest();
+	waittest();
+	//forktest();
+	//io1();
+	//io2();	
 	(void)nargs;
 	(void) args;
 	

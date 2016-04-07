@@ -101,6 +101,7 @@ boot(void)
 
 	//Initialize global variables
 	memset(proc_Array, 0, (sizeof(struct proc*) * __PID_MAX));
+	proc_Lock = lock_create("proc_lock");
 
 	kprintf("\n");
 	kprintf("OS/161 base system version %s\n", BASE_VERSION);

@@ -37,6 +37,8 @@
  */
 
 #include <spinlock.h>
+#include <synch.h>
+#include <limits.h>
 
 struct addrspace;
 struct thread;
@@ -64,8 +66,13 @@ struct vnode;
 struct proc {
 	char *p_name;			/* Name of this process */
 	pid_t p_id;
-	struct semaphore* p_waitsem;
 	int p_exitcode;
+
+	pid_t p_parent;
+	pid_t p_children[__PID_MAX];
+
+	struct semaphore* p_parsem;
+	struct semaphore* p_childsem;
 
 	struct spinlock p_lock;		/* Lock for this structure */
 	unsigned p_numthreads;		/* Number of threads in this process */
