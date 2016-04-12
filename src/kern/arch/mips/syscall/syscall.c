@@ -683,7 +683,6 @@ void sys__exit(int code){
 	spinlock_cleanup(&curthread->t_proc->p_lock);
 	as_destroy(curthread->t_proc->p_addrspace);
 
-	kprintf("thread_exit\n");
 	thread_exit();
 
 	kprintf("should not get here!!!!!!!\n");

@@ -1,1 +1,1 @@
-gedit src/kern/syscall/loadelf.c src/kern/syscall/runprogram.c src/kern/lib/uio.c src/kern/include/addrspace.h src/kern/include/elf.h src/kern/include/proc.h src/kern/arch/mips/locore/trap.c src/kern/arch/mips/syscall/syscall.c &
+gedit src/kern/vm/addrspace.c src/kern/include/addrspace.h src/kern/arch/mips/vm/mipsvm.c src/kern/include/vm.h src/kern/arch/mips/vm/dumbvm.c &
