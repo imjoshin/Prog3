@@ -1,4 +1,11 @@
-cd ASST2
+cd GENERIC
+echo
+echo
+bmake depend
+echo
+echo
+
+
 out=`(bmake)`
 echo $out 
 if [[ $out == "* error: *" ]]; then

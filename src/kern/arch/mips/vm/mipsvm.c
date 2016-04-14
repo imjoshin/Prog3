@@ -38,6 +38,7 @@
 #include <mips/tlb.h>
 #include <addrspace.h>
 #include <vm.h>
+#include <proc_array.h>
 
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
@@ -59,15 +60,62 @@
 /* (this must be > 64K so argument blocks of size ARG_MAX will fit) */
 #define DUMBVM_STACKPAGES    18
 
-/*
- * Wrap ram_stealmem in a spinlock.
- */
+
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
+static struct lock* cm_lock;
 
 void
 vm_bootstrap(void)
 {
-	/* Do nothing. */
+	if(vm_bootstrap_done) return;
+
+	kprintf("VM_BOOTSTRAP: called\n");
+
+	cm_lock = lock_create("cm_lock");
+	
+	paddr_t firstaddr, lastaddr, freeaddr, next_page;
+	struct coremap_entry* coremap;
+	unsigned int page_num, i, cm_pages;
+
+	lastaddr = ram_getsize();  
+	firstaddr = ram_getfirstfree();
+
+	next_page = lastaddr - (lastaddr % PAGE_SIZE);
+	page_num = next_page / PAGE_SIZE;
+ 
+	// pages should be a kernel virtual address !!
+	coremap = (struct coremap_entry*) PADDR_TO_KVADDR(firstaddr);
+	(void)coremap; 
+
+	freeaddr = firstaddr + page_num * sizeof(struct coremap_entry);
+	(void)freeaddr;
+
+	cm_pages = freeaddr / PAGE_SIZE;
+	coremap.size = cm_pages;
+	
+	kprintf("VM_BOOTSTRAP: first: %08x, last: %08x, free: %08x\n", firstaddr, lastaddr, freeaddr);
+	kprintf("VM_BOOTSTRAP: next_page %08x, page_num: %d, PAGE_SIZE: %d\n", next_page, page_num, PAGE_SIZE);
+	kprintf("VM_BOOTSTRAP: cm pages: %d\n", cm_pages);
+
+	for(i = 0; i < cm_pages; i++){
+		coremap.entries[i].st = FIXED;
+		coremap.entries[i].as = NULL;
+		coremap.entries[i].va = 0;
+		coremap.entries[i].pa = (PAGE_SIZE * i);
+		//kprintf("%d\n", i);
+	}
+
+	
+	for(; i < page_num; i++){
+		coremap.entries[i].st = FREE;
+		coremap.entries[i].as = NULL;
+		coremap.entries[i].va = 0;
+		coremap.entries[i].pa = (PAGE_SIZE * i);
+		//kprintf("i: %d, pa: %08x\n", i, coremap[i].pa);
+	}
+	
+	vm_bootstrap_done = 1;
+	max_pages = page_num - cm_pages;
 }
 
 /*
@@ -108,23 +156,73 @@ getppages(unsigned long npages)
 vaddr_t
 alloc_kpages(unsigned npages)
 {
+	int i, j;
 	paddr_t pa;
 
-	dumbvm_can_sleep();
-	pa = getppages(npages);
-	if (pa==0) {
+	lock_acquire(&cm_lock);
+
+	for(i = 0; i < coremap.size; i++){
+		for(j = 0; j < npages; j++){
+			if(coremap.entries[i + j].st != FREE){
+				i += j;
+				break;
+			}
+		}
+		if(j == npages){
+			break;
+		}
+	}
+
+	if (i == coremap.size || pa==0) {
 		return 0;
 	}
+
+	pa = coremap.entries[i].pa;
+
+	for(j = 0; j < npages; j++){
+		page_alloc(i + j);
+	}
+
+	lock_release(&cm_lock);
+
 	return PADDR_TO_KVADDR(pa);
+}
+
+//alloc_kpages helper
+static vaddr_t page_alloc(int pnum){
+	KASSERT(coremap.entries[pnum].st == FREE);
+	
+	//TODO swap pages, set va
+	coremap.entries[pnum].as = curthread->t_proc->p_addrspace;
+	//coremap.entries[pnum].va = 
+	coremap.entries[pnum].st = DIRTY;
+
 }
 
 void
 free_kpages(vaddr_t addr)
 {
-	/* nothing - leak the memory. */
+	int i;
 
-	(void)addr;
+	lock_acquire(&cm_lock);
+
+	for(i = 0; i < coremap.size; i++){
+		if(coremap.entries[i].va = addr){
+			coremap.entries[i].st = FREE;
+
+			if(coremap.entries[i].as != NULL){
+				coremap.entries[i].as = NULL;	
+				//TODO find if we shootdown TLB
+			}
+
+			break;
+		}
+	}
+
+	lock_release(&cm_lock);
 }
+
+
 
 void
 vm_tlbshootdown_all(void)
@@ -245,18 +343,18 @@ as_create(void)
 {
 	//kprintf("DUMBVM: malloc - size: %d\n", sizeof(struct addrspace));
 	struct addrspace *as = kmalloc(sizeof(struct addrspace));
+
 	if (as==NULL) {
 		return NULL;
 	}
 
-	//kprintf("DUMBVM: set creation variables;\n");
-	as->as_vbase1 = 0;
-	as->as_pbase1 = 0;
-	as->as_npages1 = 0;
-	as->as_vbase2 = 0;
-	as->as_pbase2 = 0;
-	as->as_npages2 = 0;
-	as->as_stackpbase = 0;
+	//TODO figure out addresses
+	as->as_heapstart = 0;
+	as->as_heapend = 0;
+	as->as_stackpbase = USERSTACK;
+
+	as->pages = kmalloc(sizeof(int) * max_pages);
+	memset(as->pages, 0, sizeof(int) * max_pages);
 
 	return as;
 }
@@ -265,6 +363,7 @@ void
 as_destroy(struct addrspace *as)
 {
 	dumbvm_can_sleep();
+	kfree(as->pages);
 	kfree(as);
 }
 
@@ -292,7 +391,7 @@ as_activate(void)
 void
 as_deactivate(void)
 {
-	/* nothing */
+	
 }
 
 int
@@ -405,6 +504,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	}
 
 	//kprintf("DUMBVM: copy vars;\n");
+	//TODO change vars
 	new->as_vbase1 = old->as_vbase1;
 	new->as_npages1 = old->as_npages1;
 	new->as_vbase2 = old->as_vbase2;

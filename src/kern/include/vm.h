@@ -45,6 +45,23 @@
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
 
 
+typedef enum{
+	FREE,
+	DIRTY,
+	FIXED,
+	CLEAN
+} page_state_t;
+
+//coremap struct
+struct coremap_entry {
+	struct addrspace* as;
+	vaddr_t va;
+	paddr_t pa;
+	page_state_t st;
+
+};
+
+
 /* Initialization function */
 void vm_bootstrap(void);
 

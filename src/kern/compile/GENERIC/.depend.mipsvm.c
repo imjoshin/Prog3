@@ -11,4 +11,5 @@ mipsvm.o: ../../arch/mips/vm/mipsvm.c ../../include/types.h \
  ../../include/uio.h ../../include/kern/iovec.h \
  includelinks/machine/thread.h ../../include/setjmp.h \
  includelinks/kern/machine/setjmp.h includelinks/mips/tlb.h \
- ../../include/addrspace.h ../../include/vm.h opt-dumbvm.h
+ ../../include/addrspace.h ../../include/vm.h opt-dumbvm.h \
+ ../../include/proc_array.h

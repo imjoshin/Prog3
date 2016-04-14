@@ -88,6 +88,7 @@ struct cpu {
 	struct tlbshootdown c_shootdown[TLBSHOOTDOWN_MAX];
 	int c_numshootdown;
 	struct spinlock c_ipi_lock;
+
 };
 
 #define TLBSHOOTDOWN_ALL  (-1)
