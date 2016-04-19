@@ -88,10 +88,10 @@ vm_bootstrap(void)
 	steal = (steal + (PAGE_SIZE - 1)) / PAGE_SIZE;
 	kprintf("VM_BOOTSTRAP: steal: %d\n", steal);
 
-	page_num = (lastaddr - (lastaddr % PAGE_SIZE)) / PAGE_SIZE;
+	page_num = lastaddr / PAGE_SIZE;
 
 	// pages should be a kernel virtual address !!
-	coremap = (struct coremap*) ram_stealmem(steal);//(struct coremap*) PADDR_TO_KVADDR(firstaddr);
+	coremap = (struct coremap*) PADDR_TO_KVADDR(ram_stealmem(steal));//(struct coremap*) PADDR_TO_KVADDR(firstaddr);
 	//coremap->size = cm_pages;
 
 	firstaddr = ram_getfirstfree();
@@ -115,15 +115,9 @@ vm_bootstrap(void)
 	for(; i < page_num; i++){
 		kprintf("%d (%08x): 1\n", i, (unsigned int) &coremap->entries[i]);
 		coremap->entries[i].st = FREE;
-		kprintf("2");
 		coremap->entries[i].as = NULL;
-		kprintf("3");
-		//coremap->entries[i].va = 0;
-		//kprintf("%08x (%08x)\n", (unsigned int) coremap->entries[i].va, (unsigned int) &coremap->entries[i].va);
-		kprintf("4");
+		coremap->entries[i].va = 0;
 		coremap->entries[i].pa = (PAGE_SIZE * i);
-		kprintf("5\n");
-		//kprintf("%d: %d\n", i, coremap->entries + i);
 	}
 
 /*
