@@ -62,83 +62,61 @@
 
 
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
-static struct lock* cm_lock;
+//static struct lock* cm_lock;
 
 void
 vm_bootstrap(void)
 {
+/*
 	if(vm_bootstrap_done) return;
 
 	kprintf("VM_BOOTSTRAP: called\n");
 
 	cm_lock = lock_create("cm_lock");
 	
-	paddr_t firstaddr, lastaddr;
-	unsigned int page_num, i, steal;
+	paddr_t firstaddr, lastaddr, freeaddr, next_page;
+	unsigned int page_num, i, cm_pages;
 
-
-	(void)page_num; (void) i; (void) steal;
-	(void)lastaddr; (void) firstaddr;
- 
 	lastaddr = ram_getsize();  
-
-
-	steal = sizeof(struct coremap);
-	steal += (lastaddr / PAGE_SIZE) * sizeof(struct coremap_entry);
-	steal = (steal + (PAGE_SIZE - 1)) / PAGE_SIZE;
-	kprintf("VM_BOOTSTRAP: steal: %d\n", steal);
-
-	page_num = (lastaddr - (lastaddr % PAGE_SIZE)) / PAGE_SIZE;
-
-	// pages should be a kernel virtual address !!
-	coremap = (struct coremap*) ram_stealmem(steal);//(struct coremap*) PADDR_TO_KVADDR(firstaddr);
-	//coremap->size = cm_pages;
-
 	firstaddr = ram_getfirstfree();
-	//freeaddr = firstaddr + page_num * sizeof(struct coremap_entry);
 
-	kprintf("VM_BOOTSTRAP: first: %08x, last: %08x, coremap: %08x, entries: %08x\n", firstaddr, lastaddr, (unsigned int)coremap, (unsigned int)&coremap->entries);
-	kprintf("VM_BOOTSTRAP: entries points at : %08x\n", (unsigned int) (coremap + sizeof(coremap)));
-	kprintf("VM_BOOTSTRAP: page_num: %d, PAGE_SIZE: %d\n", page_num, PAGE_SIZE);
+	next_page = lastaddr - (lastaddr % PAGE_SIZE);
+	page_num = next_page / PAGE_SIZE;
+ 
+	// pages should be a kernel virtual address !!
+	coremap = (struct coremap*) PADDR_TO_KVADDR(firstaddr);
+	(void)coremap; 
 
-	coremap->entries = (struct coremap_entry*) (coremap + sizeof(coremap));
+	freeaddr = firstaddr + page_num * sizeof(struct coremap_entry);
+	(void)freeaddr;
+
+	cm_pages = freeaddr / PAGE_SIZE;
+	coremap->size = cm_pages;
 	
-	for(i = 0; i < steal; i++){
+	kprintf("VM_BOOTSTRAP: first: %08x, last: %08x, free: %08x\n", firstaddr, lastaddr, freeaddr);
+	kprintf("VM_BOOTSTRAP: next_page %08x, page_num: %d, PAGE_SIZE: %d\n", next_page, page_num, PAGE_SIZE);
+	kprintf("VM_BOOTSTRAP: cm pages: %d\n", cm_pages);
+
+	for(i = 0; i < cm_pages; i++){
 		coremap->entries[i].st = FIXED;
 		coremap->entries[i].as = NULL;
 		coremap->entries[i].va = 0;
 		coremap->entries[i].pa = (PAGE_SIZE * i);
+		//kprintf("%d\n", i);
 	}
+
 	
-	
-	kprintf("i is at %08x\n", (unsigned int) &i);
 	for(; i < page_num; i++){
-		kprintf("%d (%08x): 1\n", i, (unsigned int) &coremap->entries[i]);
 		coremap->entries[i].st = FREE;
-		kprintf("2");
 		coremap->entries[i].as = NULL;
-		kprintf("3");
-		//coremap->entries[i].va = 0;
-		//kprintf("%08x (%08x)\n", (unsigned int) coremap->entries[i].va, (unsigned int) &coremap->entries[i].va);
-		kprintf("4");
+		coremap->entries[i].va = 0;
 		coremap->entries[i].pa = (PAGE_SIZE * i);
-		kprintf("5\n");
-		//kprintf("%d: %d\n", i, coremap->entries + i);
+		//kprintf("i: %d, pa: %08x\n", i, coremap[i].pa);
 	}
-
-/*
-	for(i = 0; i < page_num * PAGE_SIZE; i+=8){
-		if(*((int*)i) != 0)
-			//kprintf("i = %d\n", i);
-		else
-			//kprintf("i = %d ZERO\n", i);
-
-	}
-	*/
+	
 	vm_bootstrap_done = 1;
-	kprintf("VM_BOOTSTRAP: created %d pages\n", page_num);
-	//max_pages = page_num - cm_pages;
-
+	max_pages = page_num - cm_pages;
+*/
 }
 
 /*
@@ -356,45 +334,46 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		 * kernel fault early in boot.
 		 */
 		kprintf("VM_FAULT: as == NULL\n");
-		//return EFAULT;
-	}else{
-		/* Assert that the address space has been set up properly. */
-		KASSERT(as->as_vbase1 != 0);
-		KASSERT(as->as_pbase1 != 0);
-		KASSERT(as->as_npages1 != 0);
-		KASSERT(as->as_vbase2 != 0);
-		KASSERT(as->as_pbase2 != 0);
-		KASSERT(as->as_npages2 != 0);
-		KASSERT(as->as_stackpbase != 0);
-		KASSERT((as->as_vbase1 & PAGE_FRAME) == as->as_vbase1);
-		KASSERT((as->as_pbase1 & PAGE_FRAME) == as->as_pbase1);
-		KASSERT((as->as_vbase2 & PAGE_FRAME) == as->as_vbase2);
-		KASSERT((as->as_pbase2 & PAGE_FRAME) == as->as_pbase2);
-		KASSERT((as->as_stackpbase & PAGE_FRAME) == as->as_stackpbase);
-
-		vbase1 = as->as_vbase1;
-		vtop1 = vbase1 + as->as_npages1 * PAGE_SIZE;
-		vbase2 = as->as_vbase2;
-		vtop2 = vbase2 + as->as_npages2 * PAGE_SIZE;
-		stackbase = USERSTACK - DUMBVM_STACKPAGES * PAGE_SIZE;
-		stacktop = USERSTACK;
-
-		if (faultaddress >= vbase1 && faultaddress < vtop1) {
-			paddr = (faultaddress - vbase1) + as->as_pbase1;
-		}
-		else if (faultaddress >= vbase2 && faultaddress < vtop2) {
-			paddr = (faultaddress - vbase2) + as->as_pbase2;
-		}
-		else if (faultaddress >= stackbase && faultaddress < stacktop) {
-			paddr = (faultaddress - stackbase) + as->as_stackpbase;
-		}
-		else {
-			return EFAULT;
-		}
-
-		/* make sure it's page-aligned */
-		KASSERT((paddr & PAGE_FRAME) == paddr);
+		return EFAULT;
 	}
+
+	/* Assert that the address space has been set up properly. */
+	KASSERT(as->as_vbase1 != 0);
+	KASSERT(as->as_pbase1 != 0);
+	KASSERT(as->as_npages1 != 0);
+	KASSERT(as->as_vbase2 != 0);
+	KASSERT(as->as_pbase2 != 0);
+	KASSERT(as->as_npages2 != 0);
+	KASSERT(as->as_stackpbase != 0);
+	KASSERT((as->as_vbase1 & PAGE_FRAME) == as->as_vbase1);
+	KASSERT((as->as_pbase1 & PAGE_FRAME) == as->as_pbase1);
+	KASSERT((as->as_vbase2 & PAGE_FRAME) == as->as_vbase2);
+	KASSERT((as->as_pbase2 & PAGE_FRAME) == as->as_pbase2);
+	KASSERT((as->as_stackpbase & PAGE_FRAME) == as->as_stackpbase);
+
+	vbase1 = as->as_vbase1;
+	vtop1 = vbase1 + as->as_npages1 * PAGE_SIZE;
+	vbase2 = as->as_vbase2;
+	vtop2 = vbase2 + as->as_npages2 * PAGE_SIZE;
+	stackbase = USERSTACK - DUMBVM_STACKPAGES * PAGE_SIZE;
+	stacktop = USERSTACK;
+
+	if (faultaddress >= vbase1 && faultaddress < vtop1) {
+		paddr = (faultaddress - vbase1) + as->as_pbase1;
+	}
+	else if (faultaddress >= vbase2 && faultaddress < vtop2) {
+		paddr = (faultaddress - vbase2) + as->as_pbase2;
+	}
+	else if (faultaddress >= stackbase && faultaddress < stacktop) {
+		paddr = (faultaddress - stackbase) + as->as_stackpbase;
+	}
+	else {
+		return EFAULT;
+	}
+
+	/* make sure it's page-aligned */
+	KASSERT((paddr & PAGE_FRAME) == paddr);
+
 	/* Disable interrupts on this CPU while frobbing the TLB. */
 	spl = splhigh();
 

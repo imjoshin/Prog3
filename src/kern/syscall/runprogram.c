@@ -71,6 +71,7 @@ runprogram(char *progname)
 	char err[5] = "con:";
 	vaddr_t entrypoint, stackptr;
 	int result;
+	kprintf("RUNPROGRAM: entered\n");
 
 	if(proc_Lock == NULL){
 		proc_Lock = lock_create("proc_Lock");
@@ -87,8 +88,10 @@ runprogram(char *progname)
 	KASSERT(proc_getas() == NULL);
 
 	/* Create a new address space. */
+	kprintf("RUNPROGRAM: as_create()\n");
 	as = as_create();
 	if (as == NULL) {
+		kprintf("RUNPROGRAM: as_create() returns null\n");
 		vfs_close(v);
 		return ENOMEM;
 	}

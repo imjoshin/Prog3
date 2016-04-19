@@ -5,11 +5,11 @@ struct proc* proc_Array[__PID_MAX];
 struct lock* proc_Lock;
 
 struct coremap {
-	int size;
+	unsigned int size;
 	struct coremap_entry* entries;
 };
 
-struct coremap coremap;
+struct coremap* coremap;
 int vm_bootstrap_done;
 int max_pages;
 
