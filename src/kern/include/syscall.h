@@ -61,6 +61,7 @@ int sys_execv(userptr_t prog, char** args);
 pid_t sys_fork(struct trapframe *tf, int32_t* retval);
 pid_t sys_getpid(int32_t* retval);
 pid_t sys_waitpid(pid_t pid, int *returncode, int flags, int32_t* retval);
+int sys_sbrk(int inc, int* retval);
 
 /*
  * Prototypes for IN-KERNEL entry points for system call implementations.

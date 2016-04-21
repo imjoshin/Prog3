@@ -1,7 +1,2 @@
-How do we get the VA in alloc_kpages
-How do we find addrspace addresses in as_create
-page table vs page directory
-how do we do as_deactivate? is it a scheduler thing? How does this whole process work?
-Do we use dumbvm's addrspace struct?
-
-
+Why do we have to hit enter before the menu comes up again?
+Whats the easiest was to test tlb shootdown and memory overall?

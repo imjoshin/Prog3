@@ -103,8 +103,8 @@ int waittest() {
 }
 
 int execvtest() {
-	char * const* array = {"testName", "1", "2", "3", "4", NULL};
-	execv("testName", array);
+	//char * const* array = {"testName", "1", "2", "3", "4", NULL};
+	//execv("testName", array);
 	return 0;
 }
 /*
@@ -161,10 +161,10 @@ int io2(){
 
 
 int main(int nargs , char ** args){
-	execvtest();
+	//execvtest();
 	(void)nargs;
 	(void) args;
-	
+	write(1, "HELLO WORLD!\n", 14);
 /*
 	(void) nargs;
 	(void) args;

@@ -1,0 +1,6 @@
+cd ..
+file="$(find -name $1 | tr '\n' ' ')"
+echo \$1[$1]
+echo \$file[$file]i
+gedit $file
+

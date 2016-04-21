@@ -12,6 +12,7 @@ struct coremap {
 struct coremap* coremap;
 int vm_bootstrap_done;
 int max_pages;
+char printThisPlease[10000];
 
 //masks for page tables
 #define UPPERTWENTYM 0xFFFFF000

@@ -158,6 +158,9 @@ syscall(struct trapframe *tf)
 	    case SYS_waitpid:
 			err = sys_waitpid(tf->tf_a0, (int*) &tf->tf_a1, (int) tf->tf_a2, &retval);
 			break;
+	    case SYS_sbrk:
+			err = sys_sbrk(tf->tf_a0, &retval);
+			break;
 	    case SYS__exit:
 			sys__exit(tf->tf_a0);
 			break;
@@ -690,4 +693,32 @@ void sys__exit(int code){
 	while(1);
 
 }
+
+int sys_sbrk(int inc, int* retval) {
+		inc += 4 - (inc % 4);
+		if(curproc->p_addrspace->as_heapend + inc > curproc->p_addrspace->as_stackpbase) {
+			*retval = -1;
+			return ENOMEM;
+		}
+
+		if(curproc->p_addrspace->as_heapend + inc < curproc->p_addrspace->as_heapstart) {
+			*retval = -1;
+			return EINVAL;
+		}
+
+		*retval = curproc->p_addrspace->as_heapend;
+		curproc->p_addrspace->as_heapend += inc;
+		return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
 

@@ -40,9 +40,6 @@
 #include <addrspace.h>
 #include <vm.h>
 #include <proc_array.h>
-#include <vfs.h>
-#include <kern/fcntl.h>
-#include <stat.h>
 
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
@@ -284,46 +281,12 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 {
 	vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
 	paddr_t paddr;
-	int i; //ret;
+	int i;
 	uint32_t ehi, elo;
 	struct addrspace *as;
-	//struct vnode *vn;
 	int spl;
-	//char* file;
 
-
-	/*
-	kprintf("VM_FAULT: entered\n");
-	if(vm_bootstrap_done){
-		kprintf("VM_FAULT: bs done\n");
-		file = kmalloc(sizeof(char) * 6);
-		file[0] = 'p';
-		file[1] = 't';
-		file[2] = 'a';
-		file[3] = 'b';
-		file[4] = 'l';
-		file[5] = 'e';
-		file[6] = '\0';
-
-		kprintf("VM_FAULT: call open\n");
-		ret = vfs_open(file, O_RDWR | O_CREAT, 0, &vn);
-		if(ret){
-			kprintf("vfs_open failed\n");
-		}
-		kprintf("VM_FAULT: open done\n");
-	}
-	*/
-
-
-
-
-
-
-
-
-
-
-	if(DEBUGP)kprintf("VM_FAULT: entered (PID = %d) fault address: %08x\n", curthread->t_proc->p_id, faultaddress);
+	if(DEBUGP) kprintf("VM_FAULT: entered (PID = %d) fault address: %08x\n", curthread->t_proc->p_id, faultaddress);
 
 	faultaddress &= PAGE_FRAME;
 
@@ -418,68 +381,57 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	//see if the page is in the page table
 	for(i = 0; i < (int)PTABLESIZE; i++) {
 		if(as->ptable[i].va == faultaddress) {
-			if(DEBUGP) kprintf("VM_FAULT: vaddr in ptable\n");
 			//make sure the page is in the coremap
 			for(unsigned int j = 0; j < coremap->size; j++) {
-				if(coremap->entries[j].as == as && coremap->entries[j].va == faultaddress) {
-					if(DEBUGP) kprintf("VM_FAULT: found in coremap, adding to tlb\n");
+				if(coremap->entries[i].as == as && coremap->entries[i].va == faultaddress) {
 					ehi = faultaddress;
 					elo = as->ptable[i].pa | TLBLO_DIRTY | TLBLO_VALID;
 					tlb_random(ehi, elo);
-					splx(spl);
 					return 0;
 				}
 			}
-			if(DEBUGP) kprintf("need to swap it back in\n");
 			//TODO: swap in page and update tlb
 			//make as dirty
 
 		}
 	}
-	/*if(DEBUGP)*/ if(DEBUGP) kprintf("VM_FAULT: finding new table entry\n");
-
-
+	if(DEBUGP) kprintf("VM_FAULT: finding new table entry\n");
 	//find a place to put the new page
+/*
 	for(i = 0; i < (int) PTABLESIZE; i++) {
 		if(!as->ptable[i].valid) {
-			if(DEBUGP) kprintf("VM_FAULT: found invalid entry: %d\n", i);
 			as->ptable[i].valid = 1;
 			as->ptable[i].va = faultaddress;
 
-			if(DEBUGP) kprintf("VM_FAULT: starting for\n");
 			//find an empty coremap entry
-			for(unsigned int j = 1; j < coremap->size; j++) {
-				if(coremap->entries[j].st == FREE) {
-					if(DEBUGP) kprintf("VM_FAULT: found free entry - j: %d\n", j);
-					coremap->entries[j].as = curproc->p_addrspace;
-					coremap->entries[j].st = DIRTY;
-					coremap->entries[j].va = faultaddress;
-					as->ptable[i].pa = coremap->entries[j].pa;
+			for(unsigned int j = 0; j < coremap->size; j++) {
+				if(coremap->entries[i].as == NULL) {
+					coremap->entries[i].as = curproc->p_addrspace;
+					//coremap->entries[i].st = DIRTY;
+					coremap->entries[i].va = faultaddress;
+					as->ptable[i].pa = coremap->entries[i].pa;
 
 					ehi = faultaddress;
 					elo = as->ptable[i].pa | TLBLO_DIRTY | TLBLO_VALID;
-					if(DEBUGP) kprintf("VM_FAULT: setting TLB - hi: %08x pa: %08x paddr: %08x\n", ehi, as->ptable[i].pa, paddr);
 					tlb_random(ehi, elo);
-					splx(spl);
 					return 0;
 				}
 			}
 
 			//find a coremap entry for a different proc
 			for(unsigned int j = 0; j < coremap->size; j++) {
-				if(coremap->entries[j].as != as) {
+				if(coremap->entries[i].as != as) {
 					//TODO: swap out this frame
-				
 
-					coremap->entries[j].as = curproc->p_addrspace;
-					coremap->entries[j].st = DIRTY;
-					coremap->entries[j].va = faultaddress;
-					as->ptable[i].pa = coremap->entries[j].pa;
+					
+					coremap->entries[i].as = curproc->p_addrspace;
+					coremap->entries[i].st = DIRTY;
+					coremap->entries[i].va = faultaddress;
+					as->ptable[i].pa = coremap->entries[i].pa;
 
 					ehi = faultaddress;
 					elo = as->ptable[i].pa | TLBLO_DIRTY | TLBLO_VALID;
 					tlb_random(ehi, elo);
-					splx(spl);
 					return 0;
 				}
 			}
@@ -488,24 +440,17 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 
 	kprintf("VA_FAULT: page table ran out of entries\n");
+*/
 
-
-        for (i=0; i<NUM_TLB; i++) {
-                tlb_read(&ehi, &elo, i);
-                if (elo & TLBLO_VALID) {
-                        continue;
-                }
-                ehi = faultaddress;
-                elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
-                if(DEBUGP) kprintf("dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
-                DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
-                tlb_write(ehi, elo, i);
-                splx(spl);
-                return 0;
-        }
-        kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
-        splx(spl);
-        return EFAULT;
+	ehi = faultaddress;
+	if(DEBUGP) kprintf("VM_FAULT dumbvm paddr: %08x\n", paddr);
+	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+	if(DEBUGP) kprintf("dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
+	DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
+	tlb_random(ehi, elo);
+	if(DEBUGP) kprintf("VM_FAULT: returning\n");
+	splx(spl);
+	return 0;
 
 }
 
@@ -529,8 +474,8 @@ as_create(void)
 	as->as_stackpbase = 0;
 
 	for(unsigned int i = 0; i < PTABLESIZE; i++) {
-		as->ptable[i].va = 0xDEADBEEF;
-		as->ptable[i].pa = 0xDEADBEEF;
+		as->ptable[i].va = 0;
+		as->ptable[i].pa = 0;
 		as->ptable[i].valid = 0;
 	}
 

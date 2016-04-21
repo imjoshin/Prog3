@@ -31,6 +31,7 @@
 #include <lib.h>
 #include <spinlock.h>
 #include <vm.h>
+#include <proc_array.h>
 
 /*
  * Kernel malloc.
@@ -1187,6 +1188,17 @@ kmalloc(size_t sz)
 		npages = (sz + PAGE_SIZE - 1)/PAGE_SIZE;
 		address = alloc_kpages(npages);
 		if (address==0) {
+			printThisPlease[0] = 'a';
+			printThisPlease[1] = 'd';
+			printThisPlease[2] = 'd';
+			printThisPlease[3] = 'r';
+			printThisPlease[4] = 'e';
+			printThisPlease[5] = 's';
+			printThisPlease[6] = 's';
+			printThisPlease[7] = '=';
+			printThisPlease[8] = '=';
+			printThisPlease[9] = '0';
+			printThisPlease[10] = '\0';
 			return NULL;
 		}
 		KASSERT(address % PAGE_SIZE == 0);

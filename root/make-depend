@@ -1,7 +1,7 @@
 cd GENERIC
 echo
 echo
-#bmake depend
+bmake depend
 echo
 echo
 

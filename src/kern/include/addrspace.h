@@ -48,6 +48,13 @@ struct vnode;
  * You write this.
  */
 
+struct page_table_entry {
+	vaddr_t va;
+	paddr_t pa;
+	int valid;
+};
+
+#define PTABLESIZE 4096
 struct addrspace {
 #if OPT_DUMBVM
         vaddr_t as_vbase1;
@@ -70,8 +77,10 @@ struct addrspace {
         paddr_t as_stackpbase;
 
 		int* pages;
+		struct page_table_entry ptable[PTABLESIZE];
 #endif
 };
+
 
 /*
  * Functions in addrspace.c:

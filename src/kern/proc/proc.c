@@ -48,6 +48,7 @@
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
+#include <proc_array.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -73,11 +74,15 @@ proc_create(const char *name)
 		return NULL;
 	}
 
+
 	proc->p_numthreads = 0;
+
 	spinlock_init(&proc->p_lock);
+
 
 	/* VM fields */
 	proc->p_addrspace = NULL;
+
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
@@ -197,6 +202,7 @@ proc_create_runprogram(const char *name)
 
 	newproc = proc_create(name);
 	if (newproc == NULL) {
+		kprintf("newproc == NULL\n");
 		return NULL;
 	}
 

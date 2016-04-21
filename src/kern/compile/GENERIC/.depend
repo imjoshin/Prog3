@@ -405,7 +405,8 @@ proc.o: ../../proc/proc.c ../../include/types.h \
  ../../include/uio.h ../../include/kern/iovec.h \
  includelinks/machine/thread.h ../../include/setjmp.h \
  includelinks/kern/machine/setjmp.h ../../include/addrspace.h \
- ../../include/vm.h includelinks/machine/vm.h opt-dumbvm.h
+ ../../include/vm.h includelinks/machine/vm.h opt-dumbvm.h \
+ ../../include/proc_array.h
 loadelf.o: ../../syscall/loadelf.c ../../include/types.h \
  ../../include/kern/types.h includelinks/kern/machine/types.h \
  includelinks/machine/types.h ../../include/kern/errno.h \
@@ -672,7 +673,8 @@ kmalloc.o: ../../vm/kmalloc.c ../../include/types.h \
  ../../include/kern/types.h includelinks/kern/machine/types.h \
  includelinks/machine/types.h ../../include/lib.h ../../include/cdefs.h \
  opt-noasserts.h ../../include/spinlock.h includelinks/machine/spinlock.h \
- ../../include/vm.h includelinks/machine/vm.h
+ ../../include/vm.h includelinks/machine/vm.h ../../include/proc_array.h \
+ ../../include/limits.h ../../include/kern/limits.h
 trap.o: ../../arch/mips/locore/trap.c ../../include/types.h \
  ../../include/kern/types.h includelinks/kern/machine/types.h \
  includelinks/machine/types.h ../../include/signal.h \
