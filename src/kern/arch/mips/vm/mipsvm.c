@@ -284,35 +284,42 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 {
 	vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
 	paddr_t paddr;
-	int i; //ret;
+	int i; 
 	uint32_t ehi, elo;
 	struct addrspace *as;
-	//struct vnode *vn;
 	int spl;
-	//char* file;
 
 
-	/*
+	int ret;
+	struct vnode *vn;
+	char* file;
 	kprintf("VM_FAULT: entered\n");
 	if(vm_bootstrap_done){
 		kprintf("VM_FAULT: bs done\n");
-		file = kmalloc(sizeof(char) * 6);
-		file[0] = 'p';
-		file[1] = 't';
-		file[2] = 'a';
-		file[3] = 'b';
-		file[4] = 'l';
-		file[5] = 'e';
-		file[6] = '\0';
+
+
+		file = kmalloc(sizeof(char) * 9);
+		if(file ==NULL)
+			kprintf("VM_FAULT: kmalloc failed\n");
+		file[0] = 'L';
+		file[1] = 'H';
+		file[2] = 'D';
+		file[3] = '0';
+		file[4] = '.';
+		file[5] = 'i';
+		file[6] = 'm';
+		file[7] = 'g';
+		file[8] = '\0';
 
 		kprintf("VM_FAULT: call open\n");
-		ret = vfs_open(file, O_RDWR | O_CREAT, 0, &vn);
+
+		ret = vfs_open(file, O_RDWR, 0, &vn);
 		if(ret){
 			kprintf("vfs_open failed\n");
 		}
 		kprintf("VM_FAULT: open done\n");
 	}
-	*/
+	
 
 
 
