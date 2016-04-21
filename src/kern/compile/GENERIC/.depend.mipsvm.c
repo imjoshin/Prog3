@@ -12,4 +12,6 @@ mipsvm.o: ../../arch/mips/vm/mipsvm.c ../../include/types.h \
  includelinks/machine/thread.h ../../include/setjmp.h \
  includelinks/kern/machine/setjmp.h includelinks/mips/tlb.h \
  ../../include/addrspace.h ../../include/vm.h opt-dumbvm.h \
- ../../include/proc_array.h
+ ../../include/proc_array.h ../../include/vfs.h \
+ ../../include/kern/fcntl.h ../../include/stat.h \
+ ../../include/kern/stat.h ../../include/kern/stattypes.h

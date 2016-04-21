@@ -289,47 +289,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	struct addrspace *as;
 	int spl;
 
-
-	int ret;
-	struct vnode *vn;
-	char* file;
-	kprintf("VM_FAULT: entered\n");
-	if(vm_bootstrap_done){
-		kprintf("VM_FAULT: bs done\n");
-
-
-		file = kmalloc(sizeof(char) * 9);
-		if(file ==NULL)
-			kprintf("VM_FAULT: kmalloc failed\n");
-		file[0] = 'L';
-		file[1] = 'H';
-		file[2] = 'D';
-		file[3] = '0';
-		file[4] = '.';
-		file[5] = 'i';
-		file[6] = 'm';
-		file[7] = 'g';
-		file[8] = '\0';
-
-		kprintf("VM_FAULT: call open\n");
-
-		ret = vfs_open(file, O_RDWR, 0, &vn);
-		if(ret){
-			kprintf("vfs_open failed\n");
-		}
-		kprintf("VM_FAULT: open done\n");
-	}
-	
-
-
-
-
-
-
-
-
-
-
 	if(DEBUGP)kprintf("VM_FAULT: entered (PID = %d) fault address: %08x\n", curthread->t_proc->p_id, faultaddress);
 
 	faultaddress &= PAGE_FRAME;
